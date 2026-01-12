@@ -507,7 +507,6 @@ import dotenv from "dotenv";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import bodyParser from "body-parser";
 import { createServer } from "http";
 import { Server as SocketServer } from "socket.io";
 import jwt from "jsonwebtoken";
@@ -544,15 +543,17 @@ const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
 
 // -------------------
-// MIDDLEWARE
+// MIDDLEWARE (sabse important changes yahan)
+app.use(express.json());  // ← Yeh add kiya! JSON body parse karega (login/register ke liye must)
+
 app.use(cors({
   origin: (origin, callback) => {
     // Allow no-origin requests (mobile apps, Postman, etc.)
     if (!origin) return callback(null, true);
 
-    // Allowed origins list – sab domains daal diye
+    // Allowed origins list – sab current + purane domains
     const allowedOrigins = [
-      'https://stylo-ecommerce-admin-k67y.vercel.app',   // latest working domain
+      'https://stylo-ecommerce-admin-k67y.vercel.app',   // latest working
       'https://stylo-ecommerce-admin-9xes.vercel.app',   // purana
       'https://stylo-ecommerce-admin-hmam.vercel.app',   // aur purana
       'http://localhost:5173',                           // local Vite
@@ -571,7 +572,7 @@ app.use(cors({
   optionsSuccessStatus: 200
 }));
 
-// Yeh line zaroor rakho (Railway ke proxy ke liye magic fix)
+// Yeh line zaroor rakho (Railway ke proxy ke liye)
 app.options('/*splat', cors());
 
 // -------------------
@@ -736,28 +737,38 @@ app.get("/api/contacts", async (req, res) => {
 app.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-    console.log("Login attempt:", { email, password: password ? "provided" : "missing" });
 
-    const admin = await Profile.findOne({ email });
+    // Debug: Body check
+    console.log("[LOGIN] Request body received:", JSON.stringify(req.body));
+
+    if (!email || !password) {
+      console.log("[LOGIN] Missing email or password");
+      return res.status(400).json({ success: false, message: "Email and password are required" });
+    }
+
+    // Email search (case-insensitive bana dete hain test ke liye)
+    const admin = await Profile.findOne({ email: { $regex: new RegExp(email, 'i') } });
+
     if (!admin) {
-      console.log("Admin not found for email:", email);
+      console.log("[LOGIN] Admin not found for email:", email);
       return res.status(404).json({ success: false, message: "Admin not found" });
     }
 
-    console.log("Found admin:", admin.email, "Stored password:", admin.password);
+    console.log("[LOGIN] Admin found:", admin.email, "Stored password:", admin.password);
 
     if (admin.password !== password) {
-      console.log("Password mismatch for:", email);
+      console.log("[LOGIN] Password mismatch for:", email);
       return res.status(401).json({ success: false, message: "Invalid credentials" });
     }
 
     const token = jwt.sign({ id: admin._id, role: admin.role }, JWT_SECRET, { expiresIn: "1d" });
-    console.log("Token generated successfully for:", email);
+    console.log("[LOGIN] Token generated successfully for:", email);
 
     res.json({ success: true, token });
   } catch (err) {
-    console.error("Login route error:", err.message, err.stack);
-    res.status(500).json({ success: false, message: "Server error: " + err.message });
+    console.error("[LOGIN ERROR] Full error:", err.message);
+    console.error("[LOGIN ERROR] Stack:", err.stack);
+    res.status(500).json({ success: false, message: "Server error during login: " + err.message });
   }
 });
 
