@@ -495,6 +495,10 @@
 
 
 
+
+
+
+
 // server.js
 import express from "express";
 import mongoose from "mongoose";
@@ -540,21 +544,20 @@ const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
 
 // -------------------
-// -------------------
 // MIDDLEWARE
 app.use(cors({
   origin: (origin, callback) => {
     // Allow no-origin requests (mobile apps, Postman, etc.)
     if (!origin) return callback(null, true);
 
-    // Allowed origins list (production ke liye yeh safe hai)
-   const allowedOrigins = [
-  'https://stylo-ecommerce-admin-k67y.vercel.app',   // ← Yeh naya add kar (current live domain)
-  'https://stylo-ecommerce-admin-9xes.vercel.app',   // purana
-  'https://stylo-ecommerce-admin-hmam.vercel.app',   // aur purana
-  'http://localhost:5173',                           // local Vite
-  'http://localhost:3000'                            // local React
-];
+    // Allowed origins list – sab domains daal diye
+    const allowedOrigins = [
+      'https://stylo-ecommerce-admin-k67y.vercel.app',   // latest working domain
+      'https://stylo-ecommerce-admin-9xes.vercel.app',   // purana
+      'https://stylo-ecommerce-admin-hmam.vercel.app',   // aur purana
+      'http://localhost:5173',                           // local Vite
+      'http://localhost:3000'                            // local React
+    ];
 
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
@@ -564,12 +567,13 @@ app.use(cors({
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,                // Agar baad mein cookies/jwt use karega toh zaroori
-  optionsSuccessStatus: 200         // Kuch browsers 204 ke bajay 200 chahte hain
+  credentials: true,
+  optionsSuccessStatus: 200
 }));
 
-// Yeh line zaroor add kar (Railway ke proxy ke liye magic fix)
+// Yeh line zaroor rakho (Railway ke proxy ke liye magic fix)
 app.options('/*splat', cors());
+
 // -------------------
 // HTTP + SOCKET.IO
 const httpServer = createServer(app);
@@ -638,42 +642,123 @@ const ContactUs = mongoose.model("ContactUs", contactUsSchema);
 
 // -------------------
 // ROUTES
-app.get("/api/test", (req,res) => res.json({ success:true, message:"Backend is LIVE!" }));
+app.get("/api/test", (req, res) => res.json({ success: true, message: "Backend is LIVE!" }));
 
 // Category
-app.get("/api/categories", async (req,res)=> { try { const cats = await Category.find(); res.json({ success:true, data: cats }); } catch(err){ res.status(500).json({ success:false, message:err.message }); } });
-app.post("/api/categories", upload.single("image"), async (req,res)=> { try { const cat = new Category({ ...req.body, image: req.file ? req.file.filename : null }); await cat.save(); io.emit("categoryUpdated", cat); res.status(201).json({ success:true, data:cat }); } catch(err){ res.status(500).json({ success:false, message:err.message }); } });
+app.get("/api/categories", async (req, res) => {
+  try {
+    const cats = await Category.find();
+    res.json({ success: true, data: cats });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.post("/api/categories", upload.single("image"), async (req, res) => {
+  try {
+    const cat = new Category({ ...req.body, image: req.file ? req.file.filename : null });
+    await cat.save();
+    io.emit("categoryUpdated", cat);
+    res.status(201).json({ success: true, data: cat });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 // Subcategory
-app.get("/api/subcategories", async (req,res)=> { try { const { category } = req.query; const filter = category ? { categoryId: category } : {}; const subs = await Subcategory.find(filter).populate("categoryId"); res.json({ success:true, data:subs }); } catch(err){ res.status(500).json({ success:false, message:err.message }); } });
+app.get("/api/subcategories", async (req, res) => {
+  try {
+    const { category } = req.query;
+    const filter = category ? { categoryId: category } : {};
+    const subs = await Subcategory.find(filter).populate("categoryId");
+    res.json({ success: true, data: subs });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 // Product
-app.get("/api/products", async (req,res)=> { try { const { category, subcategory } = req.query; const filter = {}; if(category && mongoose.Types.ObjectId.isValid(category)) filter.categoryId = category; if(subcategory && mongoose.Types.ObjectId.isValid(subcategory)) filter.subcategoryId = subcategory; const products = await Product.find(filter).populate("categoryId","name").populate("subcategoryId","name"); res.json({ success:true, data:products }); } catch(err){ res.status(500).json({ success:false, message:err.message }); } });
+app.get("/api/products", async (req, res) => {
+  try {
+    const { category, subcategory } = req.query;
+    const filter = {};
+    if (category && mongoose.Types.ObjectId.isValid(category)) filter.categoryId = category;
+    if (subcategory && mongoose.Types.ObjectId.isValid(subcategory)) filter.subcategoryId = subcategory;
+    const products = await Product.find(filter).populate("categoryId", "name").populate("subcategoryId", "name");
+    res.json({ success: true, data: products });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 // Orders
-app.get("/api/addorder", async (req,res)=> { try { const orders = await AddOrder.find().sort({ createdAt:-1 }); res.json({ success:true, data:orders }); } catch(err){ res.status(500).json({ success:false, message:err.message }); } });
+app.get("/api/addorder", async (req, res) => {
+  try {
+    const orders = await AddOrder.find().sort({ createdAt: -1 });
+    res.json({ success: true, data: orders });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 // Profiles
-app.get("/api/profiles", async (req,res)=> { try { const profiles = await Profile.find(); res.json({ success:true, data:profiles }); } catch(err){ res.status(500).json({ success:false, message:err.message }); } });
+app.get("/api/profiles", async (req, res) => {
+  try {
+    const profiles = await Profile.find();
+    res.json({ success: true, data: profiles });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 // FAQ
-app.get("/api/faqs", async (req,res)=> { try { const faqs = await FAQ.find(); res.json({ success:true, data:faqs }); } catch(err){ res.status(500).json({ success:false, message:err.message }); } });
+app.get("/api/faqs", async (req, res) => {
+  try {
+    const faqs = await FAQ.find();
+    res.json({ success: true, data: faqs });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 // Contacts
-app.get("/api/contacts", async (req,res)=> { try { const contacts = await ContactUs.find(); res.json({ success:true, data:contacts }); } catch(err){ res.status(500).json({ success:false, message:err.message }); } });
+app.get("/api/contacts", async (req, res) => {
+  try {
+    const contacts = await ContactUs.find();
+    res.json({ success: true, data: contacts });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 // -------------------
-// ADMIN LOGIN (JWT)
-app.post("/api/login", async (req,res)=>{
-  try{
+// ADMIN LOGIN (JWT) – with debug logs
+app.post("/api/login", async (req, res) => {
+  try {
     const { email, password } = req.body;
-    const admin = await Profile.findOne({ email });
-    if(!admin) return res.status(404).json({ success:false, message:"Admin not found" });
-    if(admin.password !== password) return res.status(401).json({ success:false, message:"Invalid credentials" });
+    console.log("Login attempt:", { email, password: password ? "provided" : "missing" });
 
-    const token = jwt.sign({ id: admin._id, role: admin.role }, JWT_SECRET, { expiresIn:"1d" });
-    res.json({ success:true, token });
-  }catch(err){ res.status(500).json({ success:false, message:err.message }); }
+    const admin = await Profile.findOne({ email });
+    if (!admin) {
+      console.log("Admin not found for email:", email);
+      return res.status(404).json({ success: false, message: "Admin not found" });
+    }
+
+    console.log("Found admin:", admin.email, "Stored password:", admin.password);
+
+    if (admin.password !== password) {
+      console.log("Password mismatch for:", email);
+      return res.status(401).json({ success: false, message: "Invalid credentials" });
+    }
+
+    const token = jwt.sign({ id: admin._id, role: admin.role }, JWT_SECRET, { expiresIn: "1d" });
+    console.log("Token generated successfully for:", email);
+
+    res.json({ success: true, token });
+  } catch (err) {
+    console.error("Login route error:", err.message, err.stack);
+    res.status(500).json({ success: false, message: "Server error: " + err.message });
+  }
 });
 
 // -------------------
