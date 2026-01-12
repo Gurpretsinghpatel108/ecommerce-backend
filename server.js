@@ -549,10 +549,11 @@ app.use(cors({
 
     // Allowed origins list (production ke liye yeh safe hai)
     const allowedOrigins = [
-      'https://stylo-ecommerce-admin-hmam.vercel.app',
-      'http://localhost:5173',      // local dev ke liye
-      'http://localhost:3000'       // agar React default port use kar raha hai
-    ];
+  'https://stylo-ecommerce-admin-9xes.vercel.app',   // ← Yeh naya (current frontend)
+  'https://stylo-ecommerce-admin-hmam.vercel.app',   // ← Purana (backup)
+  'http://localhost:5173',                           // local Vite
+  'http://localhost:3000'                            // local React
+];
 
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
