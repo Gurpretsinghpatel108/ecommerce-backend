@@ -13,7 +13,7 @@ import fs from "fs";
 import { createServer } from "http";
 import { Server as SocketServer } from "socket.io";
 
-dotenv.config();
+// dotenv.config();
 const app = express();
 
 // -------------------
