@@ -495,9 +495,6 @@
 
 
 
-
-
-
 // server.js
 import express from "express";
 import mongoose from "mongoose";
@@ -509,98 +506,105 @@ import fs from "fs";
 import bodyParser from "body-parser";
 import { createServer } from "http";
 import { Server as SocketServer } from "socket.io";
+import jwt from "jsonwebtoken";
 
-// Load dotenv ONLY for local development
+// -------------------
+// Load dotenv (local dev only)
 if (process.env.NODE_ENV !== 'production') {
   dotenv.config();
   console.log("Local dev: dotenv loaded from .env file");
 } else {
-  console.log("Production (Railway): Using direct process.env variables");
+  console.log("Production: Using process.env variables");
 }
 
-// Environment variables (ek hi baar declare kar rahe hain)
+// -------------------
+// ENV VARIABLES
 const MONGO_URI = process.env.MONGO_URI;
 const PORT = process.env.PORT || 5000;
-const FRONTEND_URL = process.env.FRONTEND_URL || "*";
+const FRONTEND_URL = process.env.FRONTEND_URL || "*"; // Vercel frontend URL
+const JWT_SECRET = process.env.JWT_SECRET || "secret123";
 
-// Critical check - agar MONGO_URI nahi mila to stop kar do
 if (!MONGO_URI) {
-  console.error("❌ MONGO_URI missing! Check Railway Variables tab.");
+  console.error("❌ MONGO_URI missing!");
   process.exit(1);
 }
-
 console.log("Mongo URI loaded (partial):", MONGO_URI.substring(0, 30) + "...");
 
-// App setup
+// -------------------
+// APP SETUP
 const app = express();
 
 // -------------------
 // UPLOADS FOLDER
-// -------------------
 const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
 
 // -------------------
-// MIDDLEWARE
 // -------------------
-app.use(cors({ 
-  origin: [FRONTEND_URL, "*"], 
-  credentials: true 
-}));
-app.use(express.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use("/uploads", express.static(UPLOAD_DIR));
+// MIDDLEWARE
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow no-origin requests (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
 
+    // Allowed origins list (production ke liye yeh safe hai)
+    const allowedOrigins = [
+      'https://stylo-ecommerce-admin-hmam.vercel.app',
+      'http://localhost:5173',      // local dev ke liye
+      'http://localhost:3000'       // agar React default port use kar raha hai
+    ];
+
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,                // Agar baad mein cookies/jwt use karega toh zaroori
+  optionsSuccessStatus: 200         // Kuch browsers 204 ke bajay 200 chahte hain
+}));
+
+// Yeh line zaroor add kar (Railway ke proxy ke liye magic fix)
+app.options('*', cors());
 // -------------------
 // HTTP + SOCKET.IO
-// -------------------
 const httpServer = createServer(app);
 const io = new SocketServer(httpServer, {
-  cors: { 
-    origin: [FRONTEND_URL, "*"], 
-    methods: ["GET", "POST", "PUT", "DELETE"] 
+  cors: {
+    origin: FRONTEND_URL,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   },
 });
-
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
   socket.emit("welcome", { message: "Welcome to Socket.io server!" });
   socket.on("disconnect", () => console.log(`Client disconnected: ${socket.id}`));
 });
 
-
 // -------------------
 // MONGODB CONNECTION
-// -------------------
-console.log("Attempting MongoDB connection...");  // Yeh zaroor dikhega
-
 mongoose.connect(MONGO_URI, {
-  serverSelectionTimeoutMS: 10000,  // 10 seconds max wait
+  serverSelectionTimeoutMS: 10000,
   socketTimeoutMS: 45000,
   connectTimeoutMS: 30000,
 })
-  .then(() => {
-    console.log("✅ MongoDB Connected – Full success! Ready state:", mongoose.connection.readyState);
-  })
+  .then(() => console.log("✅ MongoDB Connected! Ready state:", mongoose.connection.readyState))
   .catch(err => {
-    console.error("❌ MongoDB Connection FAILED! Details below:");
-    console.error("Error name:", err.name);
-    console.error("Error message:", err.message);
-    console.error("Full error object:", JSON.stringify(err, null, 2));  // Pura error dump
-    process.exit(1);  // App crash kar do taaki deploy fail show ho (fix karne ke liye)
+    console.error("❌ MongoDB Connection FAILED:", err.message);
+    process.exit(1);
   });
 
-// Extra events for more logs
 mongoose.connection.on('connecting', () => console.log('Mongoose: Connecting...'));
 mongoose.connection.on('connected', () => console.log('Mongoose: Connected event fired!'));
-mongoose.connection.on('open', () => console.log('Mongoose: Open event – DB ready!'));
-mongoose.connection.on('error', err => console.error('Mongoose error event:', err.message));
-mongoose.connection.on('disconnected', () => console.log('Mongoose: Disconnected unexpectedly!'));
+mongoose.connection.on('open', () => console.log('Mongoose: Open – DB ready!'));
+mongoose.connection.on('error', err => console.error('Mongoose error:', err.message));
+mongoose.connection.on('disconnected', () => console.log('Mongoose: Disconnected!'));
 mongoose.connection.on('reconnected', () => console.log('Mongoose: Reconnected!'));
 
 // -------------------
-// MULTER SETUP
-// -------------------
+// MULTER (file uploads)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
   filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname)),
@@ -609,174 +613,70 @@ const upload = multer({ storage });
 
 // -------------------
 // SCHEMAS & MODELS
-// -------------------
-const categorySchema = new mongoose.Schema({
-  name: String,
-  status: { type: String, default: "Active" },
-  image: String,
-});
+const categorySchema = new mongoose.Schema({ name: String, status: { type: String, default: "Active" }, image: String });
 const Category = mongoose.model("Category", categorySchema);
 
-const subcategorySchema = new mongoose.Schema({
-  categoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Category" },
-  name: String,
-  status: { type: String, default: "Active" },
-  image: String,
-});
+const subcategorySchema = new mongoose.Schema({ categoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Category" }, name: String, status: { type: String, default: "Active" }, image: String });
 const Subcategory = mongoose.model("Subcategory", subcategorySchema);
 
-const productSchema = new mongoose.Schema({
-  name: String,
-  currentPrice: Number,
-  discountPrice: { type: Number, default: 0 },
-  categoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Category" },
-  subcategoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Subcategory" },
-  description: String,
-  promoCode: String,
-  image: String,
-  status: { type: String, default: "Active" },
-});
+const productSchema = new mongoose.Schema({ name: String, currentPrice: Number, discountPrice: { type: Number, default: 0 }, categoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Category" }, subcategoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Subcategory" }, description: String, promoCode: String, image: String, status: { type: String, default: "Active" } });
 const Product = mongoose.model("Product", productSchema);
 
-const addOrderSchema = new mongoose.Schema({
-  name: String,
-  email: String,
-  phone: String,
-  address: String,
-  country: String,
-  state: String,
-  city: String,
-  postalCode: String,
-  orderNumber: String,
-  totalQty: Number,
-  totalCost: Number,
-}, { timestamps: true });
+const addOrderSchema = new mongoose.Schema({ name: String, email: String, phone: String, address: String, country: String, state: String, city: String, postalCode: String, orderNumber: String, totalQty: Number, totalCost: Number }, { timestamps: true });
 const AddOrder = mongoose.model("AddOrder", addOrderSchema, "addorder");
 
-const profileSchema = new mongoose.Schema({
-  fullName: { type: String, required: true },
-  email: { type: String, required: true, unique: true },
-  phone: String,
-  profilePicture: String,
-  password: String,
-}, { timestamps: true });
+const profileSchema = new mongoose.Schema({ fullName: { type: String, required: true }, email: { type: String, required: true, unique: true }, phone: String, profilePicture: String, password: String, role: { type: String, default: "admin" } }, { timestamps: true });
 const Profile = mongoose.model("Profile", profileSchema);
 
-const faqSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  description: { type: String, required: true },
-}, { timestamps: true });
+const faqSchema = new mongoose.Schema({ title: { type: String, required: true }, description: { type: String, required: true } }, { timestamps: true });
 const FAQ = mongoose.model("FAQ", faqSchema);
 
-const contactUsSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  email: { type: String, required: true },
-  phone: String,
-  website: String,
-  message: { type: String, required: true },
-}, { timestamps: true });
+const contactUsSchema = new mongoose.Schema({ name: { type: String, required: true }, email: { type: String, required: true }, phone: String, website: String, message: { type: String, required: true } }, { timestamps: true });
 const ContactUs = mongoose.model("ContactUs", contactUsSchema);
 
 // -------------------
 // ROUTES
-// -------------------
+app.get("/api/test", (req,res) => res.json({ success:true, message:"Backend is LIVE!" }));
 
-// Test
-app.get("/api/test", (req, res) => res.json({ success: true, message: "Backend is LIVE!" }));
+// Category
+app.get("/api/categories", async (req,res)=> { try { const cats = await Category.find(); res.json({ success:true, data: cats }); } catch(err){ res.status(500).json({ success:false, message:err.message }); } });
+app.post("/api/categories", upload.single("image"), async (req,res)=> { try { const cat = new Category({ ...req.body, image: req.file ? req.file.filename : null }); await cat.save(); io.emit("categoryUpdated", cat); res.status(201).json({ success:true, data:cat }); } catch(err){ res.status(500).json({ success:false, message:err.message }); } });
 
-// Category CRUD
-app.get("/api/categories", async (req, res) => { 
-  try { 
-    const categories = await Category.find(); 
-    res.json({ success: true, data: categories }); 
-  } catch (err) { 
-    res.status(500).json({ success: false, message: err.message }); 
-  } 
-});
+// Subcategory
+app.get("/api/subcategories", async (req,res)=> { try { const { category } = req.query; const filter = category ? { categoryId: category } : {}; const subs = await Subcategory.find(filter).populate("categoryId"); res.json({ success:true, data:subs }); } catch(err){ res.status(500).json({ success:false, message:err.message }); } });
 
-app.post("/api/categories", upload.single("image"), async (req, res) => { 
-  try { 
-    const cat = new Category({ ...req.body, image: req.file ? req.file.filename : null }); 
-    await cat.save(); 
-    io.emit("categoryUpdated", cat); 
-    res.status(201).json({ success: true, data: cat }); 
-  } catch (err) { 
-    res.status(500).json({ success: false, message: err.message }); 
-  } 
-});
-
-// Subcategory CRUD
-app.get("/api/subcategories", async (req, res) => { 
-  try { 
-    const { category } = req.query; 
-    const filter = category ? { categoryId: category } : {}; 
-    const subs = await Subcategory.find(filter).populate("categoryId"); 
-    res.json({ success: true, data: subs }); 
-  } catch (err) { 
-    res.status(500).json({ success: false, message: err.message }); 
-  } 
-});
-
-// Product CRUD
-app.get("/api/products", async (req, res) => { 
-  try { 
-    const { category, subcategory } = req.query; 
-    const filter = {}; 
-    if (category && mongoose.Types.ObjectId.isValid(category)) filter.categoryId = category; 
-    if (subcategory && mongoose.Types.ObjectId.isValid(subcategory)) filter.subcategoryId = subcategory; 
-    const products = await Product.find(filter)
-      .populate("categoryId", "name")
-      .populate("subcategoryId", "name"); 
-    res.json({ success: true, data: products }); 
-  } catch (err) { 
-    res.status(500).json({ success: false, message: err.message }); 
-  } 
-});
+// Product
+app.get("/api/products", async (req,res)=> { try { const { category, subcategory } = req.query; const filter = {}; if(category && mongoose.Types.ObjectId.isValid(category)) filter.categoryId = category; if(subcategory && mongoose.Types.ObjectId.isValid(subcategory)) filter.subcategoryId = subcategory; const products = await Product.find(filter).populate("categoryId","name").populate("subcategoryId","name"); res.json({ success:true, data:products }); } catch(err){ res.status(500).json({ success:false, message:err.message }); } });
 
 // Orders
-app.get("/api/addorder", async (req, res) => { 
-  try { 
-    const orders = await AddOrder.find().sort({ createdAt: -1 }); 
-    res.json({ success: true, data: orders }); 
-  } catch (err) { 
-    res.status(500).json({ success: false, message: err.message }); 
-  } 
-});
+app.get("/api/addorder", async (req,res)=> { try { const orders = await AddOrder.find().sort({ createdAt:-1 }); res.json({ success:true, data:orders }); } catch(err){ res.status(500).json({ success:false, message:err.message }); } });
 
 // Profiles
-app.get("/api/profiles", async (req, res) => { 
-  try { 
-    const profiles = await Profile.find(); 
-    res.json({ success: true, data: profiles }); 
-  } catch (err) { 
-    res.status(500).json({ success: false, message: err.message }); 
-  } 
-});
+app.get("/api/profiles", async (req,res)=> { try { const profiles = await Profile.find(); res.json({ success:true, data:profiles }); } catch(err){ res.status(500).json({ success:false, message:err.message }); } });
 
 // FAQ
-app.get("/api/faqs", async (req, res) => { 
-  try { 
-    const faqs = await FAQ.find(); 
-    res.json({ success: true, data: faqs }); 
-  } catch (err) { 
-    res.status(500).json({ success: false, message: err.message }); 
-  } 
-});
+app.get("/api/faqs", async (req,res)=> { try { const faqs = await FAQ.find(); res.json({ success:true, data:faqs }); } catch(err){ res.status(500).json({ success:false, message:err.message }); } });
 
-// Contact
-app.get("/api/contacts", async (req, res) => { 
-  try { 
-    const contacts = await ContactUs.find(); 
-    res.json({ success: true, data: contacts }); 
-  } catch (err) { 
-    res.status(500).json({ success: false, message: err.message }); 
-  } 
+// Contacts
+app.get("/api/contacts", async (req,res)=> { try { const contacts = await ContactUs.find(); res.json({ success:true, data:contacts }); } catch(err){ res.status(500).json({ success:false, message:err.message }); } });
+
+// -------------------
+// ADMIN LOGIN (JWT)
+app.post("/api/login", async (req,res)=>{
+  try{
+    const { email, password } = req.body;
+    const admin = await Profile.findOne({ email });
+    if(!admin) return res.status(404).json({ success:false, message:"Admin not found" });
+    if(admin.password !== password) return res.status(401).json({ success:false, message:"Invalid credentials" });
+
+    const token = jwt.sign({ id: admin._id, role: admin.role }, JWT_SECRET, { expiresIn:"1d" });
+    res.json({ success:true, token });
+  }catch(err){ res.status(500).json({ success:false, message:err.message }); }
 });
 
 // -------------------
 // START SERVER
-// -------------------
-httpServer.listen(PORT, "0.0.0.0", () => { 
-  console.log(`✅ Backend running on port ${PORT}`); 
-  console.log(`Frontend URL: ${FRONTEND_URL}`); 
+httpServer.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ Backend running on port ${PORT}`);
+  console.log(`Frontend URL: ${FRONTEND_URL}`);
 });
