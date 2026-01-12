@@ -13,7 +13,7 @@ import fs from "fs";
 import { createServer } from "http";
 import { Server as SocketServer } from "socket.io";
 
-// dotenv.config();
+dotenv.config();
 const app = express();
 
 // -------------------
@@ -66,11 +66,22 @@ io.on("connection", (socket) => {
 // -------------------
 // MongoDB Connection
 // -------------------
-const mongoUri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/ecommerce";
+// const mongoUri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/ecommerce";
+const mongoUri = process.env.MONGO_URI;
+
+if (!mongoUri) {
+  throw new Error("❌ MONGO_URI missing in environment variables");
+}
+
 mongoose
   .connect(mongoUri)
-  .then(() => console.log("MongoDB Connected"))
-  .catch((err) => console.log("Mongo Error:", err));
+  .then(() => console.log("✅ MongoDB Atlas Connected"))
+  .catch((err) => {
+    console.error("❌ Mongo Error:", err);
+    process.exit(1);
+  });
+
+
 
 // -------------------
 // Multer Setup
@@ -472,7 +483,9 @@ app.post("/api/contacts", async (req, res) => {
 // -------------------
 // START SERVER (PORT CHANGED TO 5001)
 // -------------------
-const PORT = process.env.PORT || 5001;  // <--- YAHAN CHANGE KIYA HAI
+// const PORT = process.env.PORT || 5001;  // <--- YAHAN CHANGE KIYA HAI
+const PORT = process.env.PORT || 8080;
+
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`Admin Backend running on http://localhost:${PORT}`);
   console.log(`Local IP: http://192.168.29.72:${PORT}`);
