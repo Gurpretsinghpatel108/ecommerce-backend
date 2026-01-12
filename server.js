@@ -567,7 +567,7 @@ app.use(cors({
 }));
 
 // Yeh line zaroor add kar (Railway ke proxy ke liye magic fix)
-app.options('*', cors());
+app.options('/*splat', cors());
 // -------------------
 // HTTP + SOCKET.IO
 const httpServer = createServer(app);
