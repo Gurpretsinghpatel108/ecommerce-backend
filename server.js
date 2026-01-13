@@ -695,6 +695,75 @@ app.delete("/api/categories/:id", async (req, res) => {
   }
 });
 
+
+// Subcategories Routes
+app.get("/api/subcategories", async (req, res) => {
+  try {
+    const { category } = req.query; // Optional: filter by categoryId
+    const filter = category ? { categoryId: category } : {};
+    const subs = await Subcategory.find(filter).populate("categoryId", "name");
+    res.json({ success: true, data: subs });
+  } catch (err) {
+    console.error("Get subcategories error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.post("/api/subcategories", upload.single("image"), async (req, res) => {
+  try {
+    const sub = new Subcategory({
+      ...req.body,
+      image: req.file ? req.file.filename : null
+    });
+    await sub.save();
+    const populatedSub = await Subcategory.findById(sub._id).populate("categoryId", "name");
+    io.emit("subcategoryUpdated", populatedSub); // Real-time update
+    res.status(201).json({ success: true, data: populatedSub });
+  } catch (err) {
+    console.error("Add subcategory error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.put("/api/subcategories/:id", upload.single("image"), async (req, res) => {
+  try {
+    const updateData = { ...req.body };
+    if (req.file) {
+      updateData.image = req.file.filename;
+    }
+
+    const updatedSub = await Subcategory.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true, runValidators: true }
+    ).populate("categoryId", "name");
+
+    if (!updatedSub) {
+      return res.status(404).json({ success: false, message: "Subcategory not found" });
+    }
+
+    io.emit("subcategoryUpdated", updatedSub);
+    res.json({ success: true, data: updatedSub });
+  } catch (err) {
+    console.error("Update subcategory error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.delete("/api/subcategories/:id", async (req, res) => {
+  try {
+    const sub = await Subcategory.findByIdAndDelete(req.params.id);
+    if (!sub) {
+      return res.status(404).json({ success: false, message: "Subcategory not found" });
+    }
+    io.emit("subcategoryUpdated", { deleted: req.params.id });
+    res.json({ success: true, message: "Subcategory deleted successfully" });
+  } catch (err) {
+    console.error("Delete subcategory error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // Admin Login – extra cors middleware for safety
 app.post("/api/login", cors(), async (req, res) => {
   try {
