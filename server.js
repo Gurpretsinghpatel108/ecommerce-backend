@@ -545,39 +545,25 @@ if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
 app.use(express.json());
 app.use("/uploads", express.static(UPLOAD_DIR));
 
-// CORS Configuration (Vercel + local safe + wildcard for previews)
+// Simplified CORS (dynamic callback hata diya – Railway proxy ke liye reliable wildcard/array)
 app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-
-    const allowedOrigins = [
-      'https://stylo-ecommerce-admin-k67y.vercel.app',
-      'https://stylo-ecommerce-admin-9xes.vercel.app',
-      'https://stylo-ecommerce-admin-hmam.vercel.app',
-      'https://stylo-ecommerce-admin-zrmu.vercel.app',
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'http://localhost:5174'
-    ];
-
-    if (origin.endsWith('.vercel.app') || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: [
+    'https://stylo-ecommerce-admin-a4s1.vercel.app', // tera current frontend domain
+    'https://*.vercel.app',                           // sab Vercel previews allow (safe & recommended)
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://localhost:5174'
+  ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
   optionsSuccessStatus: 204
 }));
 
-// Global preflight OPTIONS handler – Critical for Railway CORS issues
+// Manual preflight handler – Railway ke edge proxy ke liye critical (OPTIONS ko force handle)
 app.options('*', (req, res) => {
   const origin = req.headers.origin;
-  if (origin) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  }
+  res.setHeader('Access-Control-Allow-Origin', origin || '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -628,7 +614,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // -------------------
-// MODELS
+// MODELS (same as before)
 const categorySchema = new mongoose.Schema({
   name: String,
   status: { type: String, default: "Active" },
@@ -636,7 +622,6 @@ const categorySchema = new mongoose.Schema({
 });
 const Category = mongoose.model("Category", categorySchema);
 
-// (baaki models same rakh rahe hain – agar chahiye to copy kar lena)
 const subcategorySchema = new mongoose.Schema({ categoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Category" }, name: String, status: { type: String, default: "Active" }, image: String });
 const Subcategory = mongoose.model("Subcategory", subcategorySchema);
 
@@ -693,11 +678,8 @@ app.delete("/api/categories/:id", async (req, res) => {
   }
 });
 
-// Baaki routes (subcategories, products, orders, etc.) – same rakh rahe hain
-// Agar full chahiye to bata dena, yahan short kar diya
-
-// Admin Login (same as before)
-app.post("/api/login", async (req, res) => {
+// Admin Login with extra cors middleware (just in case)
+app.post("/api/login", cors(), async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -726,7 +708,7 @@ app.post("/api/login", async (req, res) => {
 });
 
 // -------------------
-// Catch-all 404 – JSON response (no HTML page)
+// Catch-all 404 – JSON response
 app.use((req, res) => {
   res.status(404).json({ success: false, message: `Cannot ${req.method} ${req.originalUrl}` });
 });
