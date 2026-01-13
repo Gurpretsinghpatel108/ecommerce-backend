@@ -545,21 +545,18 @@ if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
 app.use(express.json());
 app.use("/uploads", express.static(UPLOAD_DIR));
 
-// Reliable CORS config for Railway (wildcard + preflightContinue)
+// CORS config (wildcard for all origins – test ke liye best)
 app.use(cors({
-  origin: '*',                          // Sab allow (test ke liye best)
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
   optionsSuccessStatus: 204,
-  preflightContinue: false              // Yeh line add kar – proxy ke liye zaroori
+  preflightContinue: false
 }));
 
-// Force OPTIONS handling (Railway proxy bypass)
-app.options('*', cors());
-
-// Extra: Specific API routes ke liye bhi OPTIONS
-app.options('/api/*', cors());
+// Fix for Express v5 / path-to-regexp: Use NAMED wildcard /*all instead of plain '*'
+app.options('/*all', cors());
 
 // -------------------
 // HTTP + SOCKET.IO SETUP
@@ -669,7 +666,7 @@ app.delete("/api/categories/:id", async (req, res) => {
   }
 });
 
-// Admin Login – extra cors middleware
+// Admin Login – extra cors middleware for safety
 app.post("/api/login", cors(), async (req, res) => {
   try {
     const { email, password } = req.body;
