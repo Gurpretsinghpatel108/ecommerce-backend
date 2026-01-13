@@ -499,7 +499,6 @@
 
 
 
-
 // server.js
 import express from "express";
 import mongoose from "mongoose";
@@ -547,11 +546,14 @@ if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
 // MIDDLEWARE – Sabse important section
 app.use(express.json());  // JSON body parse karega (login/register ke liye must)
 
+// Yeh line add ki – images public kar degi (blank image ka issue fix)
+app.use("/uploads", express.static(UPLOAD_DIR));
+
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
 
-    // Allowed origins – sab Vercel domains daal diye (current + purane + wildcard fallback)
+    // Allowed origins – sab Vercel domains daal diye
     const allowedOrigins = [
       'https://stylo-ecommerce-admin-k67y.vercel.app',
       'https://stylo-ecommerce-admin-9xes.vercel.app',
@@ -562,7 +564,7 @@ app.use(cors({
       'http://localhost:5174'
     ];
 
-    // Wildcard fallback – agar koi naya Vercel domain aaye toh bhi allow
+    // Wildcard fallback – future ke liye sab Vercel domains allow
     if (origin.endsWith('.vercel.app') || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
