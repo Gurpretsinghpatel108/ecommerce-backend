@@ -498,6 +498,322 @@
 
 
 
+// // server.js
+// import express from "express";
+// import mongoose from "mongoose";
+// import cors from "cors";
+// import dotenv from "dotenv";
+// import multer from "multer";
+// import path from "path";
+// import fs from "fs";
+// import { createServer } from "http";
+// import { Server as SocketServer } from "socket.io";
+// import jwt from "jsonwebtoken";
+
+// // -------------------
+// // Load dotenv (local dev only)
+// if (process.env.NODE_ENV !== 'production') {
+//   dotenv.config();
+//   console.log("Local dev: dotenv loaded from .env file");
+// } else {
+//   console.log("Production: Using process.env variables");
+// }
+
+// // -------------------
+// // ENV VARIABLES
+// const MONGO_URI = process.env.MONGO_URI;
+// const PORT = process.env.PORT || 5000;
+// const FRONTEND_URL = process.env.FRONTEND_URL || "*";
+// const JWT_SECRET = process.env.JWT_SECRET || "secret123";
+
+// if (!MONGO_URI) {
+//   console.error("❌ MONGO_URI missing!");
+//   process.exit(1);
+// }
+// console.log("Mongo URI loaded (partial):", MONGO_URI.substring(0, 30) + "...");
+
+// // -------------------
+// // APP SETUP
+// const app = express();
+
+// // -------------------
+// // UPLOADS FOLDER SETUP
+// const UPLOAD_DIR = path.join(process.cwd(), "uploads");
+// if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
+
+// // -------------------
+// // MIDDLEWARE
+// app.use(express.json());
+// app.use("/uploads", express.static(UPLOAD_DIR));
+
+// // CORS config (wildcard for all origins – test ke liye best)
+// app.use(cors({
+//   origin: '*',
+//   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+//   allowedHeaders: ['Content-Type', 'Authorization'],
+//   credentials: true,
+//   optionsSuccessStatus: 204,
+//   preflightContinue: false
+// }));
+
+// // Fix for Express v5 / path-to-regexp: Use NAMED wildcard /*all instead of plain '*'
+// app.options('/*all', cors());
+
+// // -------------------
+// // HTTP + SOCKET.IO SETUP
+// const httpServer = createServer(app);
+// const io = new SocketServer(httpServer, {
+//   cors: {
+//     origin: FRONTEND_URL,
+//     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+//   },
+// });
+// io.on("connection", (socket) => {
+//   console.log(`Client connected: ${socket.id}`);
+//   socket.emit("welcome", { message: "Welcome to Socket.io server!" });
+//   socket.on("disconnect", () => console.log(`Client disconnected: ${socket.id}`));
+// });
+
+// // -------------------
+// // MONGODB CONNECTION
+// mongoose.connect(MONGO_URI, {
+//   serverSelectionTimeoutMS: 10000,
+//   socketTimeoutMS: 45000,
+//   connectTimeoutMS: 30000,
+// })
+//   .then(() => console.log("✅ MongoDB Connected! Ready state:", mongoose.connection.readyState))
+//   .catch(err => {
+//     console.error("❌ MongoDB Connection FAILED:", err.message);
+//     process.exit(1);
+//   });
+
+// // Connection events logging
+// mongoose.connection.on('connecting', () => console.log('Mongoose: Connecting...'));
+// mongoose.connection.on('connected', () => console.log('Mongoose: Connected!'));
+// mongoose.connection.on('open', () => console.log('Mongoose: DB ready!'));
+// mongoose.connection.on('error', err => console.error('Mongoose error:', err.message));
+// mongoose.connection.on('disconnected', () => console.log('Mongoose: Disconnected!'));
+
+// // -------------------
+// // MULTER SETUP
+// const storage = multer.diskStorage({
+//   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+//   filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname)),
+// });
+// const upload = multer({ storage });
+
+// // -------------------
+// // MODELS
+// const categorySchema = new mongoose.Schema({
+//   name: String,
+//   status: { type: String, default: "Active" },
+//   image: String
+// });
+// const Category = mongoose.model("Category", categorySchema);
+
+// const subcategorySchema = new mongoose.Schema({ categoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Category" }, name: String, status: { type: String, default: "Active" }, image: String });
+// const Subcategory = mongoose.model("Subcategory", subcategorySchema);
+
+// const productSchema = new mongoose.Schema({ name: String, currentPrice: Number, discountPrice: { type: Number, default: 0 }, categoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Category" }, subcategoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Subcategory" }, description: String, promoCode: String, image: String, status: { type: String, default: "Active" } });
+// const Product = mongoose.model("Product", productSchema);
+
+// const addOrderSchema = new mongoose.Schema({ name: String, email: String, phone: String, address: String, country: String, state: String, city: String, postalCode: String, orderNumber: String, totalQty: Number, totalCost: Number }, { timestamps: true });
+// const AddOrder = mongoose.model("AddOrder", addOrderSchema, "addorder");
+
+// const profileSchema = new mongoose.Schema({ fullName: { type: String, required: true }, email: { type: String, required: true, unique: true }, phone: String, profilePicture: String, password: String, role: { type: String, default: "admin" } }, { timestamps: true });
+// const Profile = mongoose.model("Profile", profileSchema);
+
+// const faqSchema = new mongoose.Schema({ title: { type: String, required: true }, description: { type: String, required: true } }, { timestamps: true });
+// const FAQ = mongoose.model("FAQ", faqSchema);
+
+// const contactUsSchema = new mongoose.Schema({ name: { type: String, required: true }, email: { type: String, required: true }, phone: String, website: String, message: { type: String, required: true } }, { timestamps: true });
+// const ContactUs = mongoose.model("ContactUs", contactUsSchema);
+
+// // -------------------
+// // ROUTES
+// app.get("/api/test", (req, res) => res.json({ success: true, message: "Backend is LIVE!" }));
+
+// // Categories
+// app.get("/api/categories", async (req, res) => {
+//   try {
+//     const cats = await Category.find();
+//     res.json({ success: true, data: cats });
+//   } catch (err) {
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// });
+
+// app.post("/api/categories", upload.single("image"), async (req, res) => {
+//   try {
+//     const cat = new Category({ ...req.body, image: req.file ? req.file.filename : null });
+//     await cat.save();
+//     io.emit("categoryUpdated", cat);
+//     res.status(201).json({ success: true, data: cat });
+//   } catch (err) {
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// });
+
+// // Update/Edit Category (PUT route - yeh missing tha!)
+// app.put("/api/categories/:id", upload.single("image"), async (req, res) => {
+//   try {
+//     const updateData = { ...req.body };  // name, status etc.
+
+//     // Agar new image upload hui to update karo
+//     if (req.file) {
+//       updateData.image = req.file.filename;
+//     }
+
+//     const updatedCat = await Category.findByIdAndUpdate(
+//       req.params.id,
+//       updateData,
+//       { new: true, runValidators: true }  // Updated document return karega
+//     );
+
+//     if (!updatedCat) {
+//       return res.status(404).json({ success: false, message: "Category not found" });
+//     }
+
+//     io.emit("categoryUpdated", updatedCat);  // Real-time update frontend pe
+//     res.json({ success: true, data: updatedCat });
+//   } catch (err) {
+//     console.error("Update error:", err);
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// });
+
+// app.delete("/api/categories/:id", async (req, res) => {
+//   try {
+//     const cat = await Category.findByIdAndDelete(req.params.id);
+//     if (!cat) {
+//       return res.status(404).json({ success: false, message: "Category not found" });
+//     }
+//     io.emit("categoryUpdated", { deleted: req.params.id });
+//     res.json({ success: true, message: "Category deleted successfully" });
+//   } catch (err) {
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// });
+
+
+// // Subcategories Routes
+// app.get("/api/subcategories", async (req, res) => {
+//   try {
+//     const { category } = req.query; // Optional: filter by categoryId
+//     const filter = category ? { categoryId: category } : {};
+//     const subs = await Subcategory.find(filter).populate("categoryId", "name");
+//     res.json({ success: true, data: subs });
+//   } catch (err) {
+//     console.error("Get subcategories error:", err);
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// });
+
+// app.post("/api/subcategories", upload.single("image"), async (req, res) => {
+//   try {
+//     const sub = new Subcategory({
+//       ...req.body,
+//       image: req.file ? req.file.filename : null
+//     });
+//     await sub.save();
+//     const populatedSub = await Subcategory.findById(sub._id).populate("categoryId", "name");
+//     io.emit("subcategoryUpdated", populatedSub); // Real-time update
+//     res.status(201).json({ success: true, data: populatedSub });
+//   } catch (err) {
+//     console.error("Add subcategory error:", err);
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// });
+
+// app.put("/api/subcategories/:id", upload.single("image"), async (req, res) => {
+//   try {
+//     const updateData = { ...req.body };
+//     if (req.file) {
+//       updateData.image = req.file.filename;
+//     }
+
+//     const updatedSub = await Subcategory.findByIdAndUpdate(
+//       req.params.id,
+//       updateData,
+//       { new: true, runValidators: true }
+//     ).populate("categoryId", "name");
+
+//     if (!updatedSub) {
+//       return res.status(404).json({ success: false, message: "Subcategory not found" });
+//     }
+
+//     io.emit("subcategoryUpdated", updatedSub);
+//     res.json({ success: true, data: updatedSub });
+//   } catch (err) {
+//     console.error("Update subcategory error:", err);
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// });
+
+// app.delete("/api/subcategories/:id", async (req, res) => {
+//   try {
+//     const sub = await Subcategory.findByIdAndDelete(req.params.id);
+//     if (!sub) {
+//       return res.status(404).json({ success: false, message: "Subcategory not found" });
+//     }
+//     io.emit("subcategoryUpdated", { deleted: req.params.id });
+//     res.json({ success: true, message: "Subcategory deleted successfully" });
+//   } catch (err) {
+//     console.error("Delete subcategory error:", err);
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// });
+
+// // Admin Login – extra cors middleware for safety
+// app.post("/api/login", cors(), async (req, res) => {
+//   try {
+//     const { email, password } = req.body;
+
+//     console.log("[LOGIN] Request body:", JSON.stringify(req.body));
+
+//     if (!email || !password) {
+//       return res.status(400).json({ success: false, message: "Email and password required" });
+//     }
+
+//     const admin = await Profile.findOne({ email: { $regex: new RegExp(`^${email}$`, 'i') } });
+
+//     if (!admin) {
+//       return res.status(404).json({ success: false, message: "Admin not found" });
+//     }
+
+//     if (admin.password !== password) {
+//       return res.status(401).json({ success: false, message: "Invalid credentials" });
+//     }
+
+//     const token = jwt.sign({ id: admin._id, role: admin.role }, JWT_SECRET, { expiresIn: "1d" });
+//     res.json({ success: true, token });
+//   } catch (err) {
+//     console.error("[LOGIN ERROR]:", err);
+//     res.status(500).json({ success: false, message: "Server error" });
+//   }
+// });
+
+// // -------------------
+// // Catch-all 404 – JSON response
+// app.use((req, res) => {
+//   res.status(404).json({ success: false, message: `Cannot ${req.method} ${req.originalUrl}` });
+// });
+
+// // -------------------
+// // START SERVER
+// httpServer.listen(PORT, "0.0.0.0", () => {
+//   console.log(`✅ Server running on port ${PORT}`);
+//   console.log(`Frontend allowed: ${FRONTEND_URL}`);
+// });
+
+
+
+
+
+
+
+
+
 // server.js
 import express from "express";
 import mongoose from "mongoose";
@@ -509,22 +825,25 @@ import fs from "fs";
 import { createServer } from "http";
 import { Server as SocketServer } from "socket.io";
 import jwt from "jsonwebtoken";
+// import Razorpay from "razorpay"; // Uncomment if needed
 
 // -------------------
-// Load dotenv (local dev only)
+// Load dotenv
 if (process.env.NODE_ENV !== 'production') {
   dotenv.config();
-  console.log("Local dev: dotenv loaded from .env file");
+  console.log("Local dev: dotenv loaded");
 } else {
-  console.log("Production: Using process.env variables");
+  console.log("Production: Using process.env");
 }
 
 // -------------------
 // ENV VARIABLES
 const MONGO_URI = process.env.MONGO_URI;
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5000; // Railway uses process.env.PORT
 const FRONTEND_URL = process.env.FRONTEND_URL || "*";
 const JWT_SECRET = process.env.JWT_SECRET || "secret123";
+// const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID;
+// const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
 
 if (!MONGO_URI) {
   console.error("❌ MONGO_URI missing!");
@@ -537,7 +856,7 @@ console.log("Mongo URI loaded (partial):", MONGO_URI.substring(0, 30) + "...");
 const app = express();
 
 // -------------------
-// UPLOADS FOLDER SETUP
+// UPLOADS FOLDER
 const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
 
@@ -546,7 +865,7 @@ if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
 app.use(express.json());
 app.use("/uploads", express.static(UPLOAD_DIR));
 
-// CORS config (wildcard for all origins – test ke liye best)
+// CORS - full wildcard for all origins (safe for testing/production)
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -556,11 +875,23 @@ app.use(cors({
   preflightContinue: false
 }));
 
-// Fix for Express v5 / path-to-regexp: Use NAMED wildcard /*all instead of plain '*'
+// Fix for Express v5 / path-to-regexp error
 app.options('/*all', cors());
 
+// JWT Middleware for protected routes (optional - use kar sakta hai future mein)
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) return res.status(401).json({ success: false, message: "No token" });
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) return res.status(403).json({ success: false, message: "Invalid token" });
+    req.user = user;
+    next();
+  });
+};
+
 // -------------------
-// HTTP + SOCKET.IO SETUP
+// HTTP + SOCKET.IO
 const httpServer = createServer(app);
 const io = new SocketServer(httpServer, {
   cors: {
@@ -570,7 +901,7 @@ const io = new SocketServer(httpServer, {
 });
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
-  socket.emit("welcome", { message: "Welcome to Socket.io server!" });
+  socket.emit("welcome", { message: "Welcome!" });
   socket.on("disconnect", () => console.log(`Client disconnected: ${socket.id}`));
 });
 
@@ -581,18 +912,11 @@ mongoose.connect(MONGO_URI, {
   socketTimeoutMS: 45000,
   connectTimeoutMS: 30000,
 })
-  .then(() => console.log("✅ MongoDB Connected! Ready state:", mongoose.connection.readyState))
+  .then(() => console.log("✅ MongoDB Connected!"))
   .catch(err => {
     console.error("❌ MongoDB Connection FAILED:", err.message);
     process.exit(1);
   });
-
-// Connection events logging
-mongoose.connection.on('connecting', () => console.log('Mongoose: Connecting...'));
-mongoose.connection.on('connected', () => console.log('Mongoose: Connected!'));
-mongoose.connection.on('open', () => console.log('Mongoose: DB ready!'));
-mongoose.connection.on('error', err => console.error('Mongoose error:', err.message));
-mongoose.connection.on('disconnected', () => console.log('Mongoose: Disconnected!'));
 
 // -------------------
 // MULTER SETUP
@@ -602,8 +926,14 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
+// Razorpay Setup (commented - uncomment if needed)
+// const razorpay = new Razorpay({
+//   key_id: RAZORPAY_KEY_ID || "",
+//   key_secret: RAZORPAY_KEY_SECRET || "",
+// });
+
 // -------------------
-// MODELS
+// MODELS (sab add kar diye)
 const categorySchema = new mongoose.Schema({
   name: String,
   status: { type: String, default: "Active" },
@@ -611,29 +941,72 @@ const categorySchema = new mongoose.Schema({
 });
 const Category = mongoose.model("Category", categorySchema);
 
-const subcategorySchema = new mongoose.Schema({ categoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Category" }, name: String, status: { type: String, default: "Active" }, image: String });
+const subcategorySchema = new mongoose.Schema({
+  categoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Category", required: true },
+  name: String,
+  status: { type: String, default: "Active" },
+  image: String
+});
 const Subcategory = mongoose.model("Subcategory", subcategorySchema);
 
-const productSchema = new mongoose.Schema({ name: String, currentPrice: Number, discountPrice: { type: Number, default: 0 }, categoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Category" }, subcategoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Subcategory" }, description: String, promoCode: String, image: String, status: { type: String, default: "Active" } });
+const productSchema = new mongoose.Schema({
+  name: String,
+  currentPrice: Number,
+  discountPrice: { type: Number, default: 0 },
+  categoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Category", required: true },
+  subcategoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Subcategory" },
+  description: String,
+  promoCode: String,
+  image: String,
+  status: { type: String, default: "Active" }
+});
 const Product = mongoose.model("Product", productSchema);
 
-const addOrderSchema = new mongoose.Schema({ name: String, email: String, phone: String, address: String, country: String, state: String, city: String, postalCode: String, orderNumber: String, totalQty: Number, totalCost: Number }, { timestamps: true });
+const addOrderSchema = new mongoose.Schema({
+  name: String,
+  email: String,
+  phone: String,
+  address: String,
+  country: String,
+  state: String,
+  city: String,
+  postalCode: String,
+  orderNumber: String,
+  totalQty: Number,
+  totalCost: Number
+}, { timestamps: true });
 const AddOrder = mongoose.model("AddOrder", addOrderSchema, "addorder");
 
-const profileSchema = new mongoose.Schema({ fullName: { type: String, required: true }, email: { type: String, required: true, unique: true }, phone: String, profilePicture: String, password: String, role: { type: String, default: "admin" } }, { timestamps: true });
+const profileSchema = new mongoose.Schema({
+  fullName: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  phone: String,
+  profilePicture: String,
+  password: String,
+  role: { type: String, default: "admin" }
+}, { timestamps: true });
 const Profile = mongoose.model("Profile", profileSchema);
 
-const faqSchema = new mongoose.Schema({ title: { type: String, required: true }, description: { type: String, required: true } }, { timestamps: true });
+const faqSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  description: { type: String, required: true }
+}, { timestamps: true });
 const FAQ = mongoose.model("FAQ", faqSchema);
 
-const contactUsSchema = new mongoose.Schema({ name: { type: String, required: true }, email: { type: String, required: true }, phone: String, website: String, message: { type: String, required: true } }, { timestamps: true });
+const contactUsSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  email: { type: String, required: true },
+  phone: String,
+  website: String,
+  message: { type: String, required: true }
+}, { timestamps: true });
 const ContactUs = mongoose.model("ContactUs", contactUsSchema);
 
 // -------------------
 // ROUTES
 app.get("/api/test", (req, res) => res.json({ success: true, message: "Backend is LIVE!" }));
 
-// Categories
+// Categories CRUD
 app.get("/api/categories", async (req, res) => {
   try {
     const cats = await Category.find();
@@ -654,30 +1027,17 @@ app.post("/api/categories", upload.single("image"), async (req, res) => {
   }
 });
 
-// Update/Edit Category (PUT route - yeh missing tha!)
 app.put("/api/categories/:id", upload.single("image"), async (req, res) => {
   try {
-    const updateData = { ...req.body };  // name, status etc.
+    const updateData = { ...req.body };
+    if (req.file) updateData.image = req.file.filename;
 
-    // Agar new image upload hui to update karo
-    if (req.file) {
-      updateData.image = req.file.filename;
-    }
+    const updatedCat = await Category.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    if (!updatedCat) return res.status(404).json({ success: false, message: "Category not found" });
 
-    const updatedCat = await Category.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { new: true, runValidators: true }  // Updated document return karega
-    );
-
-    if (!updatedCat) {
-      return res.status(404).json({ success: false, message: "Category not found" });
-    }
-
-    io.emit("categoryUpdated", updatedCat);  // Real-time update frontend pe
+    io.emit("categoryUpdated", updatedCat);
     res.json({ success: true, data: updatedCat });
   } catch (err) {
-    console.error("Update error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -685,26 +1045,23 @@ app.put("/api/categories/:id", upload.single("image"), async (req, res) => {
 app.delete("/api/categories/:id", async (req, res) => {
   try {
     const cat = await Category.findByIdAndDelete(req.params.id);
-    if (!cat) {
-      return res.status(404).json({ success: false, message: "Category not found" });
-    }
+    if (!cat) return res.status(404).json({ success: false, message: "Category not found" });
+
     io.emit("categoryUpdated", { deleted: req.params.id });
-    res.json({ success: true, message: "Category deleted successfully" });
+    res.json({ success: true, message: "Category deleted" });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-
-// Subcategories Routes
+// Subcategories CRUD (full)
 app.get("/api/subcategories", async (req, res) => {
   try {
-    const { category } = req.query; // Optional: filter by categoryId
+    const { category } = req.query;
     const filter = category ? { categoryId: category } : {};
     const subs = await Subcategory.find(filter).populate("categoryId", "name");
     res.json({ success: true, data: subs });
   } catch (err) {
-    console.error("Get subcategories error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -716,11 +1073,10 @@ app.post("/api/subcategories", upload.single("image"), async (req, res) => {
       image: req.file ? req.file.filename : null
     });
     await sub.save();
-    const populatedSub = await Subcategory.findById(sub._id).populate("categoryId", "name");
-    io.emit("subcategoryUpdated", populatedSub); // Real-time update
-    res.status(201).json({ success: true, data: populatedSub });
+    const populated = await Subcategory.findById(sub._id).populate("categoryId", "name");
+    io.emit("subcategoryUpdated", populated);
+    res.status(201).json({ success: true, data: populated });
   } catch (err) {
-    console.error("Add subcategory error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -728,24 +1084,16 @@ app.post("/api/subcategories", upload.single("image"), async (req, res) => {
 app.put("/api/subcategories/:id", upload.single("image"), async (req, res) => {
   try {
     const updateData = { ...req.body };
-    if (req.file) {
-      updateData.image = req.file.filename;
-    }
+    if (req.file) updateData.image = req.file.filename;
 
-    const updatedSub = await Subcategory.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { new: true, runValidators: true }
-    ).populate("categoryId", "name");
+    const updatedSub = await Subcategory.findByIdAndUpdate(req.params.id, updateData, { new: true })
+      .populate("categoryId", "name");
 
-    if (!updatedSub) {
-      return res.status(404).json({ success: false, message: "Subcategory not found" });
-    }
+    if (!updatedSub) return res.status(404).json({ success: false, message: "Subcategory not found" });
 
     io.emit("subcategoryUpdated", updatedSub);
     res.json({ success: true, data: updatedSub });
   } catch (err) {
-    console.error("Update subcategory error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -753,48 +1101,147 @@ app.put("/api/subcategories/:id", upload.single("image"), async (req, res) => {
 app.delete("/api/subcategories/:id", async (req, res) => {
   try {
     const sub = await Subcategory.findByIdAndDelete(req.params.id);
-    if (!sub) {
-      return res.status(404).json({ success: false, message: "Subcategory not found" });
-    }
+    if (!sub) return res.status(404).json({ success: false, message: "Subcategory not found" });
+
     io.emit("subcategoryUpdated", { deleted: req.params.id });
-    res.json({ success: true, message: "Subcategory deleted successfully" });
+    res.json({ success: true, message: "Subcategory deleted" });
   } catch (err) {
-    console.error("Delete subcategory error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// Admin Login – extra cors middleware for safety
-app.post("/api/login", cors(), async (req, res) => {
+// Products CRUD (full)
+app.get("/api/products", async (req, res) => {
+  try {
+    const { category, subcategory } = req.query;
+    const filter = {};
+    if (category && mongoose.Types.ObjectId.isValid(category)) filter.categoryId = category;
+    if (subcategory && mongoose.Types.ObjectId.isValid(subcategory)) filter.subcategoryId = subcategory;
+
+    const products = await Product.find(filter)
+      .populate("categoryId", "name")
+      .populate("subcategoryId", "name");
+
+    res.json({ success: true, data: products });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.get("/api/products/:id", async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id)
+      .populate("categoryId", "name")
+      .populate("subcategoryId", "name");
+    if (!product) return res.status(404).json({ success: false, message: "Product not found" });
+    res.json({ success: true, data: product });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.post("/api/products", upload.single("image"), async (req, res) => {
+  try {
+    const product = new Product({
+      ...req.body,
+      image: req.file ? req.file.filename : null
+    });
+    await product.save();
+    const populated = await Product.findById(product._id)
+      .populate("categoryId", "name")
+      .populate("subcategoryId", "name");
+    io.emit("productUpdated", populated);
+    res.status(201).json({ success: true, data: populated });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.put("/api/products/:id", upload.single("image"), async (req, res) => {
+  try {
+    const updateData = { ...req.body };
+    if (req.file) updateData.image = req.file.filename;
+
+    const updatedProduct = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true })
+      .populate("categoryId", "name")
+      .populate("subcategoryId", "name");
+
+    if (!updatedProduct) return res.status(404).json({ success: false, message: "Product not found" });
+
+    io.emit("productUpdated", updatedProduct);
+    res.json({ success: true, data: updatedProduct });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.delete("/api/products/:id", async (req, res) => {
+  try {
+    const product = await Product.findByIdAndDelete(req.params.id);
+    if (!product) return res.status(404).json({ success: false, message: "Product not found" });
+
+    io.emit("productUpdated", { deleted: req.params.id });
+    res.json({ success: true, message: "Product deleted" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Admin Login with JWT
+app.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    console.log("[LOGIN] Request body:", JSON.stringify(req.body));
-
-    if (!email || !password) {
-      return res.status(400).json({ success: false, message: "Email and password required" });
-    }
+    if (!email || !password) return res.status(400).json({ success: false, message: "Email and password required" });
 
     const admin = await Profile.findOne({ email: { $regex: new RegExp(`^${email}$`, 'i') } });
-
-    if (!admin) {
-      return res.status(404).json({ success: false, message: "Admin not found" });
-    }
-
-    if (admin.password !== password) {
-      return res.status(401).json({ success: false, message: "Invalid credentials" });
-    }
+    if (!admin) return res.status(404).json({ success: false, message: "Admin not found" });
+    if (admin.password !== password) return res.status(401).json({ success: false, message: "Invalid credentials" });
 
     const token = jwt.sign({ id: admin._id, role: admin.role }, JWT_SECRET, { expiresIn: "1d" });
     res.json({ success: true, token });
   } catch (err) {
-    console.error("[LOGIN ERROR]:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
-// -------------------
-// Catch-all 404 – JSON response
+// Orders, Profiles, FAQ, ContactUs (basic routes)
+app.get("/api/addorder", async (req, res) => {
+  try {
+    const orders = await AddOrder.find().sort({ createdAt: -1 });
+    res.json({ success: true, data: orders });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.get("/api/profiles", async (req, res) => {
+  try {
+    const profiles = await Profile.find();
+    res.json({ success: true, data: profiles });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.get("/api/faqs", async (req, res) => {
+  try {
+    const faqs = await FAQ.find();
+    res.json({ success: true, data: faqs });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.get("/api/contacts", async (req, res) => {
+  try {
+    const contacts = await ContactUs.find();
+    res.json({ success: true, data: contacts });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Catch-all 404
 app.use((req, res) => {
   res.status(404).json({ success: false, message: `Cannot ${req.method} ${req.originalUrl}` });
 });
