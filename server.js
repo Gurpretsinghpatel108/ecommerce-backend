@@ -1337,11 +1337,11 @@ fs.access(UPLOAD_DIR, fs.constants.F_OK, (err) => {
 });
 
 // Debug: Specific image check (optional – comment out kar sakta hai baad mein)
-fs.access(path.join(UPLOAD_DIR, '1768301959171.jpeg'), fs.constants.F_OK, (err) => {
+fs.access(path.join(UPLOAD_DIR, '1768304674562.jpg'), fs.constants.F_OK, (err) => {
   if (err) {
     console.error("⚠️ Specific image not found in uploads:", err.message);
   } else {
-    console.log("✅ Specific image (1768301959171.jpeg) exists in uploads folder");
+    console.log("✅ Specific image (1768304674562.jpg) exists in uploads folder");
   }
 });
 
