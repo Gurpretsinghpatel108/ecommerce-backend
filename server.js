@@ -545,19 +545,20 @@ if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
 app.use(express.json());
 app.use("/uploads", express.static(UPLOAD_DIR));
 
-// Final working CORS config for Railway (wildcard + optionsSuccessStatus)
+// Reliable CORS config for Railway (wildcard + preflightContinue)
 app.use(cors({
-  origin: '*',  // Sab origins allow (debug ke liye best, baad mein restrict kar sakte ho)
+  origin: '*',                          // Sab allow (test ke liye best)
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
-  optionsSuccessStatus: 204
+  optionsSuccessStatus: 204,
+  preflightContinue: false              // Yeh line add kar – proxy ke liye zaroori
 }));
 
-// Critical: Force handle OPTIONS requests (Railway proxy bypass)
+// Force OPTIONS handling (Railway proxy bypass)
 app.options('*', cors());
 
-// Extra safety: OPTIONS for specific API paths
+// Extra: Specific API routes ke liye bhi OPTIONS
 app.options('/api/*', cors());
 
 // -------------------
@@ -604,7 +605,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // -------------------
-// MODELS (same as before)
+// MODELS
 const categorySchema = new mongoose.Schema({
   name: String,
   status: { type: String, default: "Active" },
@@ -668,7 +669,7 @@ app.delete("/api/categories/:id", async (req, res) => {
   }
 });
 
-// Admin Login with explicit cors middleware
+// Admin Login – extra cors middleware
 app.post("/api/login", cors(), async (req, res) => {
   try {
     const { email, password } = req.body;
