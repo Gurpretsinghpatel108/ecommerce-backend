@@ -1310,7 +1310,7 @@ console.log("Mongo URI loaded (partial):", MONGO_URI.substring(0, 30) + "...");
 const app = express();
 
 // -------------------
-// UPLOADS FOLDER – FIXED FOR RAILWAY + ESM
+// UPLOADS FOLDER – FINAL FIXED FOR RAILWAY + ESM
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 
 // Development mein folder create karo agar nahi hai
@@ -1320,9 +1320,30 @@ if (process.env.NODE_ENV !== 'production' && !fs.existsSync(UPLOAD_DIR)) {
 }
 
 // Static serve – VERY IMPORTANT: Yeh line sab routes se PEHLE daalo
-app.use('/uploads', express.static(UPLOAD_DIR));
+app.use('/uploads', express.static(UPLOAD_DIR, {
+  index: false, // no index.html
+  maxAge: '1d'  // cache for 1 day
+}));
 console.log("✅ Static uploads serving enabled at: /uploads");
 console.log("Upload directory path:", UPLOAD_DIR);
+
+// Debug: Startup pe check karo ki uploads folder exist karta hai ya nahi
+fs.access(UPLOAD_DIR, fs.constants.F_OK, (err) => {
+  if (err) {
+    console.error("⚠️ Uploads folder not found on startup:", err.message);
+  } else {
+    console.log("✅ Uploads folder exists on startup");
+  }
+});
+
+// Debug: Specific image check (optional – comment out kar sakta hai baad mein)
+fs.access(path.join(UPLOAD_DIR, '1768301959171.jpeg'), fs.constants.F_OK, (err) => {
+  if (err) {
+    console.error("⚠️ Specific image not found in uploads:", err.message);
+  } else {
+    console.log("✅ Specific image (1768301959171.jpeg) exists in uploads folder");
+  }
+});
 
 // -------------------
 // MIDDLEWARE
