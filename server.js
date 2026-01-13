@@ -497,6 +497,7 @@
 
 
 
+
 // server.js
 import express from "express";
 import mongoose from "mongoose";
@@ -649,6 +650,34 @@ app.post("/api/categories", upload.single("image"), async (req, res) => {
     io.emit("categoryUpdated", cat);
     res.status(201).json({ success: true, data: cat });
   } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Update/Edit Category (PUT route - yeh missing tha!)
+app.put("/api/categories/:id", upload.single("image"), async (req, res) => {
+  try {
+    const updateData = { ...req.body };  // name, status etc.
+
+    // Agar new image upload hui to update karo
+    if (req.file) {
+      updateData.image = req.file.filename;
+    }
+
+    const updatedCat = await Category.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true, runValidators: true }  // Updated document return karega
+    );
+
+    if (!updatedCat) {
+      return res.status(404).json({ success: false, message: "Category not found" });
+    }
+
+    io.emit("categoryUpdated", updatedCat);  // Real-time update frontend pe
+    res.json({ success: true, data: updatedCat });
+  } catch (err) {
+    console.error("Update error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
