@@ -1266,7 +1266,6 @@
 
 
 
-
 // server.js
 import express from "express";
 import mongoose from "mongoose";
@@ -1278,7 +1277,11 @@ import fs from "fs";
 import { createServer } from "http";
 import { Server as SocketServer } from "socket.io";
 import jwt from "jsonwebtoken";
-import { fileURLToPath } from 'url';  // ← Yeh add karo
+import { fileURLToPath } from 'url'; // ESM ke liye __dirname fix
+
+// ESM mein __dirname banane ka standard tareeka
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // -------------------
 // Load dotenv
@@ -1307,7 +1310,7 @@ console.log("Mongo URI loaded (partial):", MONGO_URI.substring(0, 30) + "...");
 const app = express();
 
 // -------------------
-// UPLOADS FOLDER – FIXED FOR RAILWAY
+// UPLOADS FOLDER – FIXED FOR RAILWAY + ESM
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 
 // Development mein folder create karo agar nahi hai
