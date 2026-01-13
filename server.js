@@ -499,6 +499,7 @@
 
 
 
+
 // server.js
 import express from "express";
 import mongoose from "mongoose";
@@ -524,7 +525,7 @@ if (process.env.NODE_ENV !== 'production') {
 // ENV VARIABLES
 const MONGO_URI = process.env.MONGO_URI;
 const PORT = process.env.PORT || 5000;
-const FRONTEND_URL = process.env.FRONTEND_URL || "*"; // Vercel frontend URL
+const FRONTEND_URL = process.env.FRONTEND_URL || "*";
 const JWT_SECRET = process.env.JWT_SECRET || "secret123";
 
 if (!MONGO_URI) {
@@ -543,24 +544,26 @@ const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
 
 // -------------------
-// MIDDLEWARE (sabse important changes yahan)
-app.use(express.json());  // ← Yeh add kiya! JSON body parse karega (login/register ke liye must)
+// MIDDLEWARE – Sabse important section
+app.use(express.json());  // JSON body parse karega (login/register ke liye must)
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow no-origin requests (mobile apps, Postman, etc.)
     if (!origin) return callback(null, true);
 
-    // Allowed origins list – sab current + purane domains
+    // Allowed origins – sab Vercel domains daal diye (current + purane + wildcard fallback)
     const allowedOrigins = [
-      'https://stylo-ecommerce-admin-k67y.vercel.app',   // latest working
-      'https://stylo-ecommerce-admin-9xes.vercel.app',   // purana
-      'https://stylo-ecommerce-admin-hmam.vercel.app',   // aur purana
-      'http://localhost:5173',                           // local Vite
-      'http://localhost:3000'                            // local React
+      'https://stylo-ecommerce-admin-k67y.vercel.app',
+      'https://stylo-ecommerce-admin-9xes.vercel.app',
+      'https://stylo-ecommerce-admin-hmam.vercel.app',
+      'https://stylo-ecommerce-admin-zrmu.vercel.app',
+      'http://localhost:5173',
+      'http://localhost:3000',
+      'http://localhost:5174'
     ];
 
-    if (allowedOrigins.includes(origin)) {
+    // Wildcard fallback – agar koi naya Vercel domain aaye toh bhi allow
+    if (origin.endsWith('.vercel.app') || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -572,7 +575,7 @@ app.use(cors({
   optionsSuccessStatus: 200
 }));
 
-// Yeh line zaroor rakho (Railway ke proxy ke liye)
+// Explicit OPTIONS handling (Railway ke liye safe)
 app.options('/*splat', cors());
 
 // -------------------
@@ -733,7 +736,7 @@ app.get("/api/contacts", async (req, res) => {
 });
 
 // -------------------
-// ADMIN LOGIN (JWT) – with debug logs
+// ADMIN LOGIN (JWT) – with detailed debug logs
 app.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -746,8 +749,8 @@ app.post("/api/login", async (req, res) => {
       return res.status(400).json({ success: false, message: "Email and password are required" });
     }
 
-    // Email search (case-insensitive bana dete hain test ke liye)
-    const admin = await Profile.findOne({ email: { $regex: new RegExp(email, 'i') } });
+    // Case-insensitive email search
+    const admin = await Profile.findOne({ email: { $regex: new RegExp(`^${email}$`, 'i') } });
 
     if (!admin) {
       console.log("[LOGIN] Admin not found for email:", email);
