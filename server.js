@@ -545,30 +545,20 @@ if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
 app.use(express.json());
 app.use("/uploads", express.static(UPLOAD_DIR));
 
-// Simplified CORS (dynamic callback hata diya – Railway proxy ke liye reliable wildcard/array)
+// Final working CORS config for Railway (wildcard + optionsSuccessStatus)
 app.use(cors({
-  origin: [
-    'https://stylo-ecommerce-admin-a4s1.vercel.app', // tera current frontend domain
-    'https://*.vercel.app',                           // sab Vercel previews allow (safe & recommended)
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'http://localhost:5174'
-  ],
+  origin: '*',  // Sab origins allow (debug ke liye best, baad mein restrict kar sakte ho)
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
   optionsSuccessStatus: 204
 }));
 
-// Manual preflight handler – Railway ke edge proxy ke liye critical (OPTIONS ko force handle)
-app.options('*', (req, res) => {
-  const origin = req.headers.origin;
-  res.setHeader('Access-Control-Allow-Origin', origin || '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.sendStatus(204);
-});
+// Critical: Force handle OPTIONS requests (Railway proxy bypass)
+app.options('*', cors());
+
+// Extra safety: OPTIONS for specific API paths
+app.options('/api/*', cors());
 
 // -------------------
 // HTTP + SOCKET.IO SETUP
@@ -678,7 +668,7 @@ app.delete("/api/categories/:id", async (req, res) => {
   }
 });
 
-// Admin Login with extra cors middleware (just in case)
+// Admin Login with explicit cors middleware
 app.post("/api/login", cors(), async (req, res) => {
   try {
     const { email, password } = req.body;
