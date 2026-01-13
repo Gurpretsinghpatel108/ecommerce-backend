@@ -1278,6 +1278,7 @@ import fs from "fs";
 import { createServer } from "http";
 import { Server as SocketServer } from "socket.io";
 import jwt from "jsonwebtoken";
+import { fileURLToPath } from 'url';  // ← Yeh add karo
 
 // -------------------
 // Load dotenv
