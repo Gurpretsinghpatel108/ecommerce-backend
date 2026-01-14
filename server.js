@@ -1293,19 +1293,25 @@ if (process.env.NODE_ENV !== 'production') {
   console.log("Production: Using process.env");
 }
 
-// Cloudinary Config (env se)
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-console.log("Cloudinary configured from env vars!");
+// Env vars ko startup pe safe cache kar le (runtime issue fix ke liye)
+const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME;
+const API_KEY = process.env.CLOUDINARY_API_KEY;
+const API_SECRET = process.env.CLOUDINARY_API_SECRET;
+
 console.log("=== STARTUP DEBUG ===");
-console.log("Cloud Name:", process.env.CLOUDINARY_CLOUD_NAME || 'MISSING');
-console.log("API Key:", process.env.CLOUDINARY_API_KEY || 'MISSING');
-console.log("API Key length:", process.env.CLOUDINARY_API_KEY?.length || '0');
-console.log("API Secret length:", process.env.CLOUDINARY_API_SECRET?.length || '0');
+console.log("Cloud Name:", CLOUD_NAME || 'MISSING');
+console.log("API Key:", API_KEY || 'MISSING');
+console.log("API Key length:", API_KEY?.length || '0');
+console.log("API Secret length:", API_SECRET?.length || '0');
 console.log("=== DEBUG END ===");
+
+// Cloudinary Config (cached vars se)
+cloudinary.config({
+  cloud_name: CLOUD_NAME,
+  api_key: API_KEY,
+  api_secret: API_SECRET,
+});
+console.log("Cloudinary configured from cached env vars!");
 
 // ENV VARIABLES
 const MONGO_URI = process.env.MONGO_URI;
@@ -1322,7 +1328,7 @@ console.log("Mongo URI loaded (partial):", MONGO_URI.substring(0, 30) + "...");
 // APP SETUP
 const app = express();
 
-// Static serve (legacy)
+// Static serve (legacy files ke liye)
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 app.use('/uploads', express.static(UPLOAD_DIR, {
   index: false,
@@ -1447,14 +1453,16 @@ const contactUsSchema = new mongoose.Schema({
 }, { timestamps: true });
 const ContactUs = mongoose.model("ContactUs", contactUsSchema);
 
-// HELPER FUNCTION FOR CLOUDINARY UPLOAD
+// HELPER FUNCTION FOR CLOUDINARY UPLOAD (cached vars use kar)
 const uploadToCloudinary = (buffer, folder = 'stylo-ecommerce') => {
   return new Promise((resolve, reject) => {
+    console.log("Upload time - Using cached API Key length:", API_KEY?.length || 'missing');
+
     const uploadStream = cloudinary.uploader.upload_stream(
       { folder, resource_type: 'image' },
       (error, result) => {
         if (error) {
-          console.error("Cloudinary upload_stream error:", error);
+          console.error("Cloudinary upload error:", error.message);
           reject(error);
         } else {
           resolve(result);
@@ -1474,8 +1482,7 @@ app.post("/api/categories", upload.single("image"), async (req, res) => {
     console.log("=== CATEGORY POST RUNTIME DEBUG ===");
     console.log("Body:", req.body);
     console.log("File received:", !!req.file);
-    console.log("API Key at upload time:", process.env.CLOUDINARY_API_KEY || 'MISSING');
-    console.log("API Key length at upload:", process.env.CLOUDINARY_API_KEY?.length || '0');
+    console.log("Using cached API Key length:", API_KEY?.length || 'missing');
 
     let imageUrl = null;
 
