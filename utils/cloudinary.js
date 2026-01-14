@@ -1,12 +1,18 @@
 // utils/cloudinary.js
 import { v2 as cloudinary } from 'cloudinary';
 
-// Auto-config from env (CLOUDINARY_URL ya separate keys se)
-cloudinary.config();  // Empty call → CLOUDINARY_URL se auto load karega
+// Force config yahan (singleton)
+cloudinary.config(); // Auto from CLOUDINARY_URL
 
-// Debug (startup pe dikhega logs mein)
-console.log('Cloudinary singleton initialized!');
-console.log('Config in singleton:', cloudinary.config());
+// Extra safety: Manual re-config to avoid runtime loss
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'ddym2lhqe',
+  api_key: process.env.CLOUDINARY_API_KEY || 'BD1Vpwx7QpMSiOdxIzimCpd20sQ',
+  api_secret: process.env.CLOUDINARY_API_SECRET || '339196311622892',
+  secure: true
+});
 
-// Yeh export karo – har jagah same configured instance milega
+console.log('Cloudinary singleton initialized with manual safety!');
+console.log('Final config:', cloudinary.config());
+
 export default cloudinary;

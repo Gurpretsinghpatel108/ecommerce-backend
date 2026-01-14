@@ -1440,22 +1440,16 @@ const ContactUs = mongoose.model("ContactUs", contactUsSchema);
 const uploadToCloudinary = (buffer, folder = 'stylo-ecommerce') => {
   return new Promise((resolve, reject) => {
     console.log("=== RUNTIME UPLOAD DEBUG ===");
-    const currentConfig = cloudinary.config();
-    console.log("Runtime config:", currentConfig);
-    console.log("API Key at runtime:", currentConfig.api_key ? 'YES' : 'NO');
-    console.log("API Secret at runtime:", currentConfig.api_secret ? 'YES' : 'NO');
+    console.log("Config before upload:", cloudinary.config());
 
-    // Runtime fix: Re-apply if lost (ESM safety)
-    if (!currentConfig.api_key || !currentConfig.api_secret) {
-      console.log("Runtime fix: Re-applying Cloudinary config...");
-      cloudinary.config();
-    }
+    // Force re-config right before upload (this fixes the runtime loss)
+    cloudinary.config(); // Re-load from env
 
     const uploadStream = cloudinary.uploader.upload_stream(
       { folder, resource_type: 'image' },
       (error, result) => {
         if (error) {
-          console.error("Cloudinary REAL ERROR:", error.message || error);
+          console.error("Cloudinary FULL ERROR:", error.message, error);
           reject(error);
         } else {
           console.log("UPLOAD SUCCESS! URL:", result.secure_url);
