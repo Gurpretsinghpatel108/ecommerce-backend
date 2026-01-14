@@ -1293,7 +1293,7 @@ if (process.env.NODE_ENV !== 'production') {
   console.log("Production: Using process.env");
 }
 
-// Env vars ko startup pe safe cache kar le (runtime issue fix ke liye)
+// Env vars ko startup pe cache kar le (runtime corrupt fix ke liye)
 const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME;
 const API_KEY = process.env.CLOUDINARY_API_KEY;
 const API_SECRET = process.env.CLOUDINARY_API_SECRET;
