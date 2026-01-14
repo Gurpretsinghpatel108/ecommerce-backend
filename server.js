@@ -1279,7 +1279,7 @@ import { createServer } from "http";
 import { Server as SocketServer } from "socket.io";
 import jwt from "jsonwebtoken";
 import { fileURLToPath } from 'url';
-import { v2 as cloudinary } from 'cloudinary';
+import cloudinary from './utils/cloudinary.js';  // ← Yeh zaroori import (utils se singleton)
 
 // ESM __dirname fix
 const __filename = fileURLToPath(import.meta.url);
@@ -1293,13 +1293,10 @@ if (process.env.NODE_ENV !== 'production') {
   console.log("Production: Using process.env directly");
 }
 
-// Cloudinary auto-config from CLOUDINARY_URL
-cloudinary.config();  // Auto loads CLOUDINARY_URL
-console.log("Cloudinary auto-configured from CLOUDINARY_URL!");
-console.log("Current Cloudinary config at startup:", cloudinary.config());
+// Cloudinary singleton already configured in utils/cloudinary.js
+// No need to call config() again here - it's already done in the singleton file
 
-// Force re-apply config once (ESM caching fix)
-cloudinary.config(cloudinary.config());  // Re-apply current config for safety
+console.log("Using Cloudinary singleton from utils! Startup config:", cloudinary.config());
 
 // ENV VARIABLES
 const MONGO_URI = process.env.MONGO_URI;
@@ -1372,7 +1369,7 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB
 });
 
-// MODELS (same)
+// MODELS (same as before)
 const categorySchema = new mongoose.Schema({
   name: String,
   status: { type: String, default: "Active" },
@@ -1441,7 +1438,7 @@ const contactUsSchema = new mongoose.Schema({
 }, { timestamps: true });
 const ContactUs = mongoose.model("ContactUs", contactUsSchema);
 
-// HELPER FUNCTION FOR CLOUDINARY UPLOAD (singleton + runtime fix)
+// HELPER FUNCTION FOR CLOUDINARY UPLOAD
 const uploadToCloudinary = (buffer, folder = 'stylo-ecommerce') => {
   return new Promise((resolve, reject) => {
     console.log("=== RUNTIME UPLOAD DEBUG ===");
@@ -1449,10 +1446,10 @@ const uploadToCloudinary = (buffer, folder = 'stylo-ecommerce') => {
     console.log("Config at upload time:", currentConfig);
     console.log("API Key at upload:", currentConfig.api_key ? 'YES (length: ' + currentConfig.api_key.length + ')' : 'NO - MISSING!!!');
 
-    // Runtime re-apply config if missing (ESM fix)
+    // Safety re-apply if somehow lost (rare, but ESM safety)
     if (!currentConfig.api_key || !currentConfig.api_secret) {
       console.log("Re-applying Cloudinary config at runtime...");
-      cloudinary.config();  // Re-load from env/CLOUDINARY_URL
+      cloudinary.config();  // Re-load from env
     }
 
     const uploadStream = cloudinary.uploader.upload_stream(
@@ -1471,7 +1468,7 @@ const uploadToCloudinary = (buffer, folder = 'stylo-ecommerce') => {
   });
 };
 
-// ROUTES
+// ROUTES (same as your code)
 app.get("/api/test", (req, res) => res.json({ success: true, message: "Backend is LIVE!" }));
 
 // Categories POST
