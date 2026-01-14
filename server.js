@@ -1285,33 +1285,18 @@ import { v2 as cloudinary } from 'cloudinary';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load dotenv
+// Load dotenv only for local dev
 if (process.env.NODE_ENV !== 'production') {
   dotenv.config();
   console.log("Local dev: dotenv loaded");
 } else {
-  console.log("Production: Using process.env");
+  console.log("Production: Using process.env directly");
 }
 
-// Env vars ko startup pe cache kar le (runtime corrupt fix ke liye)
-const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME;
-const API_KEY = process.env.CLOUDINARY_API_KEY;
-const API_SECRET = process.env.CLOUDINARY_API_SECRET;
-
-console.log("=== STARTUP DEBUG ===");
-console.log("Cloud Name:", CLOUD_NAME || 'MISSING');
-console.log("API Key:", API_KEY || 'MISSING');
-console.log("API Key length:", API_KEY?.length || '0');
-console.log("API Secret length:", API_SECRET?.length || '0');
-console.log("=== DEBUG END ===");
-
-// Cloudinary Config (cached vars se)
-cloudinary.config({
-  cloud_name: CLOUD_NAME,
-  api_key: API_KEY,
-  api_secret: API_SECRET,
-});
-console.log("Cloudinary configured from cached env vars!");
+// Cloudinary auto-config from CLOUDINARY_URL (Railway env mein set hai)
+cloudinary.config();  // Empty call – auto loads CLOUDINARY_URL
+console.log("Cloudinary auto-configured from CLOUDINARY_URL!");
+console.log("Current Cloudinary config at startup:", cloudinary.config());
 
 // ENV VARIABLES
 const MONGO_URI = process.env.MONGO_URI;
@@ -1453,18 +1438,21 @@ const contactUsSchema = new mongoose.Schema({
 }, { timestamps: true });
 const ContactUs = mongoose.model("ContactUs", contactUsSchema);
 
-// HELPER FUNCTION FOR CLOUDINARY UPLOAD (cached vars use kar)
+// HELPER FUNCTION FOR CLOUDINARY UPLOAD (with debug)
 const uploadToCloudinary = (buffer, folder = 'stylo-ecommerce') => {
   return new Promise((resolve, reject) => {
-    console.log("Upload time - Using cached API Key length:", API_KEY?.length || 'missing');
+    console.log("=== RUNTIME UPLOAD DEBUG ===");
+    console.log("Config at upload time:", cloudinary.config());
+    console.log("API Key present at upload:", cloudinary.config().api_key ? 'YES (length: ' + cloudinary.config().api_key.length + ')' : 'NO - MISSING!!!');
 
     const uploadStream = cloudinary.uploader.upload_stream(
       { folder, resource_type: 'image' },
       (error, result) => {
         if (error) {
-          console.error("Cloudinary upload error:", error.message);
+          console.error("Cloudinary upload error full:", error);
           reject(error);
         } else {
+          console.log("Cloudinary upload SUCCESS! URL:", result.secure_url);
           resolve(result);
         }
       }
@@ -1476,13 +1464,12 @@ const uploadToCloudinary = (buffer, folder = 'stylo-ecommerce') => {
 // ROUTES
 app.get("/api/test", (req, res) => res.json({ success: true, message: "Backend is LIVE!" }));
 
-// Categories POST with runtime debug
+// Categories POST
 app.post("/api/categories", upload.single("image"), async (req, res) => {
   try {
     console.log("=== CATEGORY POST RUNTIME DEBUG ===");
     console.log("Body:", req.body);
     console.log("File received:", !!req.file);
-    console.log("Using cached API Key length:", API_KEY?.length || 'missing');
 
     let imageUrl = null;
 
@@ -1490,7 +1477,6 @@ app.post("/api/categories", upload.single("image"), async (req, res) => {
       console.log("Starting Cloudinary upload...");
       const result = await uploadToCloudinary(req.file.buffer, 'stylo-ecommerce/categories');
       imageUrl = result.secure_url;
-      console.log("Cloudinary upload SUCCESS! URL:", imageUrl);
     } else {
       console.log("No image file received in request");
     }
