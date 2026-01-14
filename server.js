@@ -1266,6 +1266,7 @@
 
 
 
+
 // server.js
 import express from "express";
 import mongoose from "mongoose";
@@ -1277,9 +1278,10 @@ import fs from "fs";
 import { createServer } from "http";
 import { Server as SocketServer } from "socket.io";
 import jwt from "jsonwebtoken";
-import { fileURLToPath } from 'url'; // ESM ke liye __dirname fix
+import { fileURLToPath } from 'url';
+import { v2 as cloudinary } from 'cloudinary';  // ← Added for Cloudinary
 
-// ESM mein __dirname banane ka standard tareeka
+// ESM __dirname fix
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -1293,9 +1295,18 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // -------------------
+// Cloudinary Config (Railway env se lega)
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+console.log("Cloudinary configured successfully!");
+
+// -------------------
 // ENV VARIABLES
 const MONGO_URI = process.env.MONGO_URI;
-const PORT = process.env.PORT || 5000; // Railway uses process.env.PORT
+const PORT = process.env.PORT || 5000;
 const FRONTEND_URL = process.env.FRONTEND_URL || "*";
 const JWT_SECRET = process.env.JWT_SECRET || "secret123";
 
@@ -1310,46 +1321,19 @@ console.log("Mongo URI loaded (partial):", MONGO_URI.substring(0, 30) + "...");
 const app = express();
 
 // -------------------
-// UPLOADS FOLDER – FINAL FIXED FOR RAILWAY + ESM
+// Static serve (old files ke liye rakha, future mein hata sakta hai)
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
-
-// Development mein folder create karo agar nahi hai
-if (process.env.NODE_ENV !== 'production' && !fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-  console.log("✅ Uploads folder created locally:", UPLOAD_DIR);
-}
-
-// Static serve – VERY IMPORTANT: Yeh line sab routes se PEHLE daalo
 app.use('/uploads', express.static(UPLOAD_DIR, {
-  index: false, // no index.html
-  maxAge: '1d'  // cache for 1 day
+  index: false,
+  maxAge: '1d'
 }));
-console.log("✅ Static uploads serving enabled at: /uploads");
-console.log("Upload directory path:", UPLOAD_DIR);
-
-// Debug: Startup pe check karo ki uploads folder exist karta hai ya nahi
-fs.access(UPLOAD_DIR, fs.constants.F_OK, (err) => {
-  if (err) {
-    console.error("⚠️ Uploads folder not found on startup:", err.message);
-  } else {
-    console.log("✅ Uploads folder exists on startup");
-  }
-});
-
-// Debug: Specific image check (optional – comment out kar sakta hai baad mein)
-fs.access(path.join(UPLOAD_DIR, '1768304674562.jpg'), fs.constants.F_OK, (err) => {
-  if (err) {
-    console.error("⚠️ Specific image not found in uploads:", err.message);
-  } else {
-    console.log("✅ Specific image (1768304674562.jpg) exists in uploads folder");
-  }
-});
+console.log("✅ Static uploads serving enabled at: /uploads (for legacy)");
 
 // -------------------
 // MIDDLEWARE
 app.use(express.json());
 
-// CORS - full wildcard (safe for testing/production)
+// CORS
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -1359,10 +1343,9 @@ app.use(cors({
   preflightContinue: false
 }));
 
-// Fix for Express v5 / path-to-regexp error
 app.options('/*all', cors());
 
-// JWT Middleware (optional – future mein use kar sakta hai)
+// JWT Middleware (optional)
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -1403,15 +1386,15 @@ mongoose.connect(MONGO_URI, {
   });
 
 // -------------------
-// MULTER SETUP
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname)),
+// MULTER SETUP - MEMORY STORAGE (for Cloudinary)
+const storage = multer.memoryStorage();
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
-const upload = multer({ storage });
 
 // -------------------
-// MODELS (all same as before)
+// MODELS (unchanged)
 const categorySchema = new mongoose.Schema({
   name: String,
   status: { type: String, default: "Active" },
@@ -1484,6 +1467,23 @@ const ContactUs = mongoose.model("ContactUs", contactUsSchema);
 // ROUTES
 app.get("/api/test", (req, res) => res.json({ success: true, message: "Backend is LIVE!" }));
 
+// Helper function for Cloudinary upload (reusable)
+const uploadToCloudinary = (buffer, folder = 'stylo-ecommerce') => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      { 
+        folder, 
+        resource_type: 'image' 
+      },
+      (error, result) => {
+        if (error) reject(error);
+        else resolve(result);
+      }
+    );
+    uploadStream.end(buffer);
+  });
+};
+
 // Categories CRUD
 app.get("/api/categories", async (req, res) => {
   try {
@@ -1496,11 +1496,19 @@ app.get("/api/categories", async (req, res) => {
 
 app.post("/api/categories", upload.single("image"), async (req, res) => {
   try {
-    const cat = new Category({ ...req.body, image: req.file ? req.file.filename : null });
+    let imageUrl = null;
+
+    if (req.file) {
+      const result = await uploadToCloudinary(req.file.buffer, 'stylo-ecommerce/categories');
+      imageUrl = result.secure_url;
+    }
+
+    const cat = new Category({ ...req.body, image: imageUrl });
     await cat.save();
     io.emit("categoryUpdated", cat);
     res.status(201).json({ success: true, data: cat });
   } catch (err) {
+    console.error("Category upload error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -1508,7 +1516,11 @@ app.post("/api/categories", upload.single("image"), async (req, res) => {
 app.put("/api/categories/:id", upload.single("image"), async (req, res) => {
   try {
     const updateData = { ...req.body };
-    if (req.file) updateData.image = req.file.filename;
+
+    if (req.file) {
+      const result = await uploadToCloudinary(req.file.buffer, 'stylo-ecommerce/categories');
+      updateData.image = result.secure_url;
+    }
 
     const updatedCat = await Category.findByIdAndUpdate(req.params.id, updateData, { new: true });
     if (!updatedCat) return res.status(404).json({ success: false, message: "Category not found" });
@@ -1532,7 +1544,7 @@ app.delete("/api/categories/:id", async (req, res) => {
   }
 });
 
-// Subcategories CRUD (full – same as before)
+// Subcategories CRUD (same Cloudinary pattern)
 app.get("/api/subcategories", async (req, res) => {
   try {
     const { category } = req.query;
@@ -1546,9 +1558,16 @@ app.get("/api/subcategories", async (req, res) => {
 
 app.post("/api/subcategories", upload.single("image"), async (req, res) => {
   try {
+    let imageUrl = null;
+
+    if (req.file) {
+      const result = await uploadToCloudinary(req.file.buffer, 'stylo-ecommerce/subcategories');
+      imageUrl = result.secure_url;
+    }
+
     const sub = new Subcategory({
       ...req.body,
-      image: req.file ? req.file.filename : null
+      image: imageUrl
     });
     await sub.save();
     const populated = await Subcategory.findById(sub._id).populate("categoryId", "name");
@@ -1562,7 +1581,11 @@ app.post("/api/subcategories", upload.single("image"), async (req, res) => {
 app.put("/api/subcategories/:id", upload.single("image"), async (req, res) => {
   try {
     const updateData = { ...req.body };
-    if (req.file) updateData.image = req.file.filename;
+
+    if (req.file) {
+      const result = await uploadToCloudinary(req.file.buffer, 'stylo-ecommerce/subcategories');
+      updateData.image = result.secure_url;
+    }
 
     const updatedSub = await Subcategory.findByIdAndUpdate(req.params.id, updateData, { new: true })
       .populate("categoryId", "name");
@@ -1588,7 +1611,7 @@ app.delete("/api/subcategories/:id", async (req, res) => {
   }
 });
 
-// Products CRUD (full – same as before)
+// Products CRUD (same pattern)
 app.get("/api/products", async (req, res) => {
   try {
     const { category, subcategory } = req.query;
@@ -1620,9 +1643,16 @@ app.get("/api/products/:id", async (req, res) => {
 
 app.post("/api/products", upload.single("image"), async (req, res) => {
   try {
+    let imageUrl = null;
+
+    if (req.file) {
+      const result = await uploadToCloudinary(req.file.buffer, 'stylo-ecommerce/products');
+      imageUrl = result.secure_url;
+    }
+
     const product = new Product({
       ...req.body,
-      image: req.file ? req.file.filename : null
+      image: imageUrl
     });
     await product.save();
     const populated = await Product.findById(product._id)
@@ -1638,7 +1668,11 @@ app.post("/api/products", upload.single("image"), async (req, res) => {
 app.put("/api/products/:id", upload.single("image"), async (req, res) => {
   try {
     const updateData = { ...req.body };
-    if (req.file) updateData.image = req.file.filename;
+
+    if (req.file) {
+      const result = await uploadToCloudinary(req.file.buffer, 'stylo-ecommerce/products');
+      updateData.image = result.secure_url;
+    }
 
     const updatedProduct = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true })
       .populate("categoryId", "name")
@@ -1665,7 +1699,7 @@ app.delete("/api/products/:id", async (req, res) => {
   }
 });
 
-// Admin Login with JWT
+// Admin Login with JWT (unchanged)
 app.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -1682,7 +1716,7 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-// Orders, Profiles, FAQ, ContactUs (basic routes – same as before)
+// Other GET routes (unchanged)
 app.get("/api/addorder", async (req, res) => {
   try {
     const orders = await AddOrder.find().sort({ createdAt: -1 });
@@ -1729,5 +1763,4 @@ app.use((req, res) => {
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Server running on port ${PORT}`);
   console.log(`Frontend allowed: ${FRONTEND_URL}`);
-  console.log(`Static uploads ready at: ${process.env.NODE_ENV === 'production' ? 'https://ecommerce-backend-production-0cdd.up.railway.app' : 'http://localhost:5000'}/uploads`);
 });
