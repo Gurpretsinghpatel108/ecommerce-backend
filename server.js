@@ -1279,13 +1279,12 @@ import { createServer } from "http";
 import { Server as SocketServer } from "socket.io";
 import jwt from "jsonwebtoken";
 import { fileURLToPath } from 'url';
-import { v2 as cloudinary } from 'cloudinary';  // ← Added for Cloudinary
+import { v2 as cloudinary } from 'cloudinary';
 
 // ESM __dirname fix
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// -------------------
 // Load dotenv
 if (process.env.NODE_ENV !== 'production') {
   dotenv.config();
@@ -1294,16 +1293,20 @@ if (process.env.NODE_ENV !== 'production') {
   console.log("Production: Using process.env");
 }
 
-// -------------------
-// Cloudinary Config (Railway env se lega)
+// Cloudinary Config (env se)
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 console.log("Cloudinary configured from env vars!");
+console.log("=== STARTUP DEBUG ===");
+console.log("Cloud Name:", process.env.CLOUDINARY_CLOUD_NAME || 'MISSING');
+console.log("API Key:", process.env.CLOUDINARY_API_KEY || 'MISSING');
+console.log("API Key length:", process.env.CLOUDINARY_API_KEY?.length || '0');
+console.log("API Secret length:", process.env.CLOUDINARY_API_SECRET?.length || '0');
+console.log("=== DEBUG END ===");
 
-// -------------------
 // ENV VARIABLES
 const MONGO_URI = process.env.MONGO_URI;
 const PORT = process.env.PORT || 5000;
@@ -1316,20 +1319,17 @@ if (!MONGO_URI) {
 }
 console.log("Mongo URI loaded (partial):", MONGO_URI.substring(0, 30) + "...");
 
-// -------------------
 // APP SETUP
 const app = express();
 
-// -------------------
-// Static serve (old files ke liye rakha, future mein hata sakta hai)
+// Static serve (legacy)
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 app.use('/uploads', express.static(UPLOAD_DIR, {
   index: false,
   maxAge: '1d'
 }));
-console.log("✅ Static uploads serving enabled at: /uploads (for legacy)");
+console.log("✅ Static uploads serving enabled at: /uploads (legacy)");
 
-// -------------------
 // MIDDLEWARE
 app.use(express.json());
 
@@ -1345,19 +1345,6 @@ app.use(cors({
 
 app.options('/*all', cors());
 
-// JWT Middleware (optional)
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  if (!token) return res.status(401).json({ success: false, message: "No token" });
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ success: false, message: "Invalid token" });
-    req.user = user;
-    next();
-  });
-};
-
-// -------------------
 // HTTP + SOCKET.IO
 const httpServer = createServer(app);
 const io = new SocketServer(httpServer, {
@@ -1372,7 +1359,6 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => console.log(`Client disconnected: ${socket.id}`));
 });
 
-// -------------------
 // MONGODB CONNECTION
 mongoose.connect(MONGO_URI, {
   serverSelectionTimeoutMS: 10000,
@@ -1385,16 +1371,14 @@ mongoose.connect(MONGO_URI, {
     process.exit(1);
   });
 
-// -------------------
-// MULTER SETUP - MEMORY STORAGE (for Cloudinary)
+// MULTER SETUP - MEMORY STORAGE
 const storage = multer.memoryStorage();
 const upload = multer({ 
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB
 });
 
-// -------------------
-// MODELS (unchanged)
+// MODELS
 const categorySchema = new mongoose.Schema({
   name: String,
   status: { type: String, default: "Active" },
@@ -1463,28 +1447,59 @@ const contactUsSchema = new mongoose.Schema({
 }, { timestamps: true });
 const ContactUs = mongoose.model("ContactUs", contactUsSchema);
 
-// -------------------
-// ROUTES
-app.get("/api/test", (req, res) => res.json({ success: true, message: "Backend is LIVE!" }));
-
-// Helper function for Cloudinary upload (reusable)
+// HELPER FUNCTION FOR CLOUDINARY UPLOAD
 const uploadToCloudinary = (buffer, folder = 'stylo-ecommerce') => {
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
-      { 
-        folder, 
-        resource_type: 'image' 
-      },
+      { folder, resource_type: 'image' },
       (error, result) => {
-        if (error) reject(error);
-        else resolve(result);
+        if (error) {
+          console.error("Cloudinary upload_stream error:", error);
+          reject(error);
+        } else {
+          resolve(result);
+        }
       }
     );
     uploadStream.end(buffer);
   });
 };
 
-// Categories CRUD
+// ROUTES
+app.get("/api/test", (req, res) => res.json({ success: true, message: "Backend is LIVE!" }));
+
+// Categories POST with runtime debug
+app.post("/api/categories", upload.single("image"), async (req, res) => {
+  try {
+    console.log("=== CATEGORY POST RUNTIME DEBUG ===");
+    console.log("Body:", req.body);
+    console.log("File received:", !!req.file);
+    console.log("API Key at upload time:", process.env.CLOUDINARY_API_KEY || 'MISSING');
+    console.log("API Key length at upload:", process.env.CLOUDINARY_API_KEY?.length || '0');
+
+    let imageUrl = null;
+
+    if (req.file) {
+      console.log("Starting Cloudinary upload...");
+      const result = await uploadToCloudinary(req.file.buffer, 'stylo-ecommerce/categories');
+      imageUrl = result.secure_url;
+      console.log("Cloudinary upload SUCCESS! URL:", imageUrl);
+    } else {
+      console.log("No image file received in request");
+    }
+
+    const cat = new Category({ ...req.body, image: imageUrl });
+    await cat.save();
+    io.emit("categoryUpdated", cat);
+    res.status(201).json({ success: true, data: cat });
+  } catch (err) {
+    console.error("Category POST full error:", err);
+    console.error("Error message:", err.message);
+    res.status(500).json({ success: false, message: err.message || "Server error during category creation" });
+  }
+});
+
+// GET categories
 app.get("/api/categories", async (req, res) => {
   try {
     const cats = await Category.find();
@@ -1494,25 +1509,7 @@ app.get("/api/categories", async (req, res) => {
   }
 });
 
-app.post("/api/categories", upload.single("image"), async (req, res) => {
-  try {
-    let imageUrl = null;
-
-    if (req.file) {
-      const result = await uploadToCloudinary(req.file.buffer, 'stylo-ecommerce/categories');
-      imageUrl = result.secure_url;
-    }
-
-    const cat = new Category({ ...req.body, image: imageUrl });
-    await cat.save();
-    io.emit("categoryUpdated", cat);
-    res.status(201).json({ success: true, data: cat });
-  } catch (err) {
-    console.error("Category upload error:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
+// PUT category
 app.put("/api/categories/:id", upload.single("image"), async (req, res) => {
   try {
     const updateData = { ...req.body };
@@ -1532,6 +1529,7 @@ app.put("/api/categories/:id", upload.single("image"), async (req, res) => {
   }
 });
 
+// DELETE category
 app.delete("/api/categories/:id", async (req, res) => {
   try {
     const cat = await Category.findByIdAndDelete(req.params.id);
@@ -1544,7 +1542,7 @@ app.delete("/api/categories/:id", async (req, res) => {
   }
 });
 
-// Subcategories CRUD (same Cloudinary pattern)
+// Subcategories GET
 app.get("/api/subcategories", async (req, res) => {
   try {
     const { category } = req.query;
@@ -1556,6 +1554,7 @@ app.get("/api/subcategories", async (req, res) => {
   }
 });
 
+// Subcategories POST
 app.post("/api/subcategories", upload.single("image"), async (req, res) => {
   try {
     let imageUrl = null;
@@ -1578,6 +1577,7 @@ app.post("/api/subcategories", upload.single("image"), async (req, res) => {
   }
 });
 
+// Subcategories PUT
 app.put("/api/subcategories/:id", upload.single("image"), async (req, res) => {
   try {
     const updateData = { ...req.body };
@@ -1599,6 +1599,7 @@ app.put("/api/subcategories/:id", upload.single("image"), async (req, res) => {
   }
 });
 
+// Subcategories DELETE
 app.delete("/api/subcategories/:id", async (req, res) => {
   try {
     const sub = await Subcategory.findByIdAndDelete(req.params.id);
@@ -1611,7 +1612,7 @@ app.delete("/api/subcategories/:id", async (req, res) => {
   }
 });
 
-// Products CRUD (same pattern)
+// Products GET
 app.get("/api/products", async (req, res) => {
   try {
     const { category, subcategory } = req.query;
@@ -1629,6 +1630,7 @@ app.get("/api/products", async (req, res) => {
   }
 });
 
+// Products GET by ID
 app.get("/api/products/:id", async (req, res) => {
   try {
     const product = await Product.findById(req.params.id)
@@ -1641,6 +1643,7 @@ app.get("/api/products/:id", async (req, res) => {
   }
 });
 
+// Products POST
 app.post("/api/products", upload.single("image"), async (req, res) => {
   try {
     let imageUrl = null;
@@ -1665,6 +1668,7 @@ app.post("/api/products", upload.single("image"), async (req, res) => {
   }
 });
 
+// Products PUT
 app.put("/api/products/:id", upload.single("image"), async (req, res) => {
   try {
     const updateData = { ...req.body };
@@ -1687,6 +1691,7 @@ app.put("/api/products/:id", upload.single("image"), async (req, res) => {
   }
 });
 
+// Products DELETE
 app.delete("/api/products/:id", async (req, res) => {
   try {
     const product = await Product.findByIdAndDelete(req.params.id);
@@ -1699,7 +1704,7 @@ app.delete("/api/products/:id", async (req, res) => {
   }
 });
 
-// Admin Login with JWT (unchanged)
+// Admin Login
 app.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -1716,7 +1721,7 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-// Other GET routes (unchanged)
+// AddOrder GET
 app.get("/api/addorder", async (req, res) => {
   try {
     const orders = await AddOrder.find().sort({ createdAt: -1 });
@@ -1726,6 +1731,7 @@ app.get("/api/addorder", async (req, res) => {
   }
 });
 
+// Profiles GET
 app.get("/api/profiles", async (req, res) => {
   try {
     const profiles = await Profile.find();
@@ -1735,6 +1741,7 @@ app.get("/api/profiles", async (req, res) => {
   }
 });
 
+// FAQs GET
 app.get("/api/faqs", async (req, res) => {
   try {
     const faqs = await FAQ.find();
@@ -1744,6 +1751,7 @@ app.get("/api/faqs", async (req, res) => {
   }
 });
 
+// Contacts GET
 app.get("/api/contacts", async (req, res) => {
   try {
     const contacts = await ContactUs.find();
@@ -1758,7 +1766,6 @@ app.use((req, res) => {
   res.status(404).json({ success: false, message: `Cannot ${req.method} ${req.originalUrl}` });
 });
 
-// -------------------
 // START SERVER
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Server running on port ${PORT}`);
