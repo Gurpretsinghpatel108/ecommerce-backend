@@ -1297,11 +1297,11 @@ if (process.env.NODE_ENV !== 'production') {
 // -------------------
 // Cloudinary Config (Railway env se lega)
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
+  cloud_name: 'ddym2lhqe',
+  api_key: 'BD1Vpwx7QpMSiOdxIzimCpd20sQ',
+  api_secret: '339196311622892',
 });
-console.log("Cloudinary configured successfully!");
+console.log("Cloudinary HARDCODED TEST config applied! Key length: 32");
 
 // -------------------
 // ENV VARIABLES
