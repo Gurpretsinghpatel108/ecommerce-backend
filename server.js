@@ -1293,10 +1293,13 @@ if (process.env.NODE_ENV !== 'production') {
   console.log("Production: Using process.env directly");
 }
 
-// Cloudinary auto-config from CLOUDINARY_URL (Railway env mein set hai)
-cloudinary.config();  // Empty call – auto loads CLOUDINARY_URL
+// Cloudinary auto-config from CLOUDINARY_URL
+cloudinary.config();  // Auto loads CLOUDINARY_URL
 console.log("Cloudinary auto-configured from CLOUDINARY_URL!");
 console.log("Current Cloudinary config at startup:", cloudinary.config());
+
+// Force re-apply config once (ESM caching fix)
+cloudinary.config(cloudinary.config());  // Re-apply current config for safety
 
 // ENV VARIABLES
 const MONGO_URI = process.env.MONGO_URI;
@@ -1369,7 +1372,7 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB
 });
 
-// MODELS
+// MODELS (same)
 const categorySchema = new mongoose.Schema({
   name: String,
   status: { type: String, default: "Active" },
@@ -1438,12 +1441,19 @@ const contactUsSchema = new mongoose.Schema({
 }, { timestamps: true });
 const ContactUs = mongoose.model("ContactUs", contactUsSchema);
 
-// HELPER FUNCTION FOR CLOUDINARY UPLOAD (with debug)
+// HELPER FUNCTION FOR CLOUDINARY UPLOAD (singleton + runtime fix)
 const uploadToCloudinary = (buffer, folder = 'stylo-ecommerce') => {
   return new Promise((resolve, reject) => {
     console.log("=== RUNTIME UPLOAD DEBUG ===");
-    console.log("Config at upload time:", cloudinary.config());
-    console.log("API Key present at upload:", cloudinary.config().api_key ? 'YES (length: ' + cloudinary.config().api_key.length + ')' : 'NO - MISSING!!!');
+    const currentConfig = cloudinary.config();
+    console.log("Config at upload time:", currentConfig);
+    console.log("API Key at upload:", currentConfig.api_key ? 'YES (length: ' + currentConfig.api_key.length + ')' : 'NO - MISSING!!!');
+
+    // Runtime re-apply config if missing (ESM fix)
+    if (!currentConfig.api_key || !currentConfig.api_secret) {
+      console.log("Re-applying Cloudinary config at runtime...");
+      cloudinary.config();  // Re-load from env/CLOUDINARY_URL
+    }
 
     const uploadStream = cloudinary.uploader.upload_stream(
       { folder, resource_type: 'image' },
